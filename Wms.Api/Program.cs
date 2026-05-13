@@ -1,7 +1,7 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Wms.Api.Extensions;
-using Wms.Application.Mapper.Sales;
+using Wms.Application.Mapper.Outbound;
 using Wms.Infrastructure.Persistence.Context;
 using Wms.Infrastructure.Seed;
 
@@ -24,7 +24,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddAuthServices();
 builder.Services.AddControllers();
 builder.Services.AddApplicationServices();
-builder.Services.AddAutoMapper(typeof(SalesMappingProfile));
+builder.Services.AddAutoMapper(typeof(OutboundMappingProfile));
 builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddPermissionPolicies();
 builder.Services.AddHttpContextAccessor();

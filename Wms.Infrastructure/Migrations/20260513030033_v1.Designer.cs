@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Wms.Infrastructure.Persistence.Context;
 
@@ -11,9 +12,11 @@ using Wms.Infrastructure.Persistence.Context;
 namespace Wms.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260513030033_v1")]
+    partial class v1
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -186,205 +189,6 @@ namespace Wms.Infrastructure.Migrations
                     b.HasIndex("RoleId");
 
                     b.ToTable("UserRoles", (string)null);
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.GoodsReceipt", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid?>("InboundOrderId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<int>("ReceiptType")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("ReceivedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("WarehouseId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InboundOrderId");
-
-                    b.ToTable("GoodsReceipts", (string)null);
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.GoodsReceiptItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("GoodsReceiptId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("InboundOrderItemId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<int>("ProductId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Received_Qty")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GoodsReceiptId");
-
-                    b.ToTable("GoodsReceiptItems", (string)null);
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.InboundOrder", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime?>("ApprovedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int?>("ApprovedBy")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<int?>("CreateBy")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<int>("SupplierId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SupplierId");
-
-                    b.ToTable("InboundOrders", (string)null);
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.InboundOrderItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("InboundOrderId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("ProductId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Received_qty")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("WarehouseId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InboundOrderId");
-
-                    b.HasIndex("WarehouseId");
-
-                    b.ToTable("InboundOrderItems", (string)null);
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.ProductionReceiptItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("ExpiryDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("GoodsReceiptId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime?>("ManufacturingDate")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("ProductId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Receipt_Qty")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GoodsReceiptId");
-
-                    b.ToTable("ProductionReceiptItems", (string)null);
                 });
 
             modelBuilder.Entity("Wms.Domain.Entity.Inventorys.Inventory", b =>
@@ -783,7 +587,206 @@ namespace Wms.Infrastructure.Migrations
                     b.ToTable("Units", (string)null);
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssue", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.GoodsReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("PurchaseOrderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("ReceiptType")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("WarehouseId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PurchaseOrderId");
+
+                    b.ToTable("GoodsReceipts", (string)null);
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.GoodsReceiptItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("GoodsReceiptId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("POIid")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Received_Qty")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GoodsReceiptId");
+
+                    b.ToTable("GoodsReceiptItems", (string)null);
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.ProductionReceiptItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ExpiryDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("GoodsReceiptId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("ManufacturingDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Receipt_Qty")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GoodsReceiptId");
+
+                    b.ToTable("ProductionReceiptItems");
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.PurchaseOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("ApprovedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<int?>("CreateBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int>("SupplierId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierId");
+
+                    b.ToTable("PurchaseOrders", (string)null);
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.PurchaseOrderItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("PurchaseOrderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Received_qty")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("WarehouseId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PurchaseOrderId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.ToTable("PurchaseOrderItems", (string)null);
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.GoodsIssue", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -800,7 +803,7 @@ namespace Wms.Infrastructure.Migrations
                     b.Property<DateTime>("IssuedAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<Guid?>("OutboundOrderId")
+                    b.Property<Guid?>("SalesOrderId")
                         .HasColumnType("char(36)");
 
                     b.Property<int>("Status")
@@ -820,14 +823,14 @@ namespace Wms.Infrastructure.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.HasIndex("OutboundOrderId");
+                    b.HasIndex("SalesOrderId");
 
                     b.HasIndex("WarehouseId");
 
                     b.ToTable("GoodsIssues", (string)null);
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssueAllocate", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.GoodsIssueAllocate", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -857,10 +860,10 @@ namespace Wms.Infrastructure.Migrations
 
                     b.HasIndex("LocationId");
 
-                    b.ToTable("GoodsIssueAllocates");
+                    b.ToTable("goodsIssueAllocates");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssueItem", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.GoodsIssueItem", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -878,14 +881,17 @@ namespace Wms.Infrastructure.Migrations
                     b.Property<Guid?>("LocationId")
                         .HasColumnType("char(36)");
 
-                    b.Property<Guid?>("OutboundOrderItemId")
-                        .HasColumnType("char(36)");
-
                     b.Property<int>("ProductId")
                         .HasColumnType("int");
 
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
+
+                    b.Property<Guid?>("SOIId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("SalesOrderItemId")
+                        .HasColumnType("char(36)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -899,14 +905,14 @@ namespace Wms.Infrastructure.Migrations
 
                     b.HasIndex("LocationId");
 
-                    b.HasIndex("OutboundOrderItemId");
-
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("SalesOrderItemId");
 
                     b.ToTable("GoodsIssueItems", (string)null);
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.OutboundOrder", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.SalesOrder", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -945,10 +951,10 @@ namespace Wms.Infrastructure.Migrations
 
                     b.HasIndex("CustomerId");
 
-                    b.ToTable("OutboundOrders", (string)null);
+                    b.ToTable("SalesOrders", (string)null);
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.OutboundOrderItem", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.SalesOrderItem", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -960,9 +966,6 @@ namespace Wms.Infrastructure.Migrations
                     b.Property<int>("Issued_Qty")
                         .HasColumnType("int");
 
-                    b.Property<Guid>("OutboundOrderId")
-                        .HasColumnType("char(36)");
-
                     b.Property<decimal>("Price")
                         .HasColumnType("decimal(65,30)");
 
@@ -971,6 +974,9 @@ namespace Wms.Infrastructure.Migrations
 
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
+
+                    b.Property<Guid>("SalesOrderId")
+                        .HasColumnType("char(36)");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -983,13 +989,13 @@ namespace Wms.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OutboundOrderId");
-
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("SalesOrderId");
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("OutboundOrderItems", (string)null);
+                    b.ToTable("SalesOrderItems", (string)null);
                 });
 
             modelBuilder.Entity("Wms.Domain.Entity.StockTakes.StockTake", b =>
@@ -1307,68 +1313,6 @@ namespace Wms.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.GoodsReceipt", b =>
-                {
-                    b.HasOne("Wms.Domain.Entity.Inbound.InboundOrder", "InboundOrder")
-                        .WithMany("GoodsReceipts")
-                        .HasForeignKey("InboundOrderId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("InboundOrder");
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.GoodsReceiptItem", b =>
-                {
-                    b.HasOne("Wms.Domain.Entity.Inbound.GoodsReceipt", "GoodsReceipt")
-                        .WithMany("Items")
-                        .HasForeignKey("GoodsReceiptId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GoodsReceipt");
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.InboundOrder", b =>
-                {
-                    b.HasOne("Wms.Domain.Entity.MasterData.Supplier", "Supplier")
-                        .WithMany()
-                        .HasForeignKey("SupplierId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Supplier");
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.InboundOrderItem", b =>
-                {
-                    b.HasOne("Wms.Domain.Entity.Inbound.InboundOrder", "InboundOrder")
-                        .WithMany("Items")
-                        .HasForeignKey("InboundOrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Wms.Domain.Entity.Warehouses.Warehouse", "Warehouse")
-                        .WithMany()
-                        .HasForeignKey("WarehouseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("InboundOrder");
-
-                    b.Navigation("Warehouse");
-                });
-
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.ProductionReceiptItem", b =>
-                {
-                    b.HasOne("Wms.Domain.Entity.Inbound.GoodsReceipt", "GoodsReceipt")
-                        .WithMany("Productions")
-                        .HasForeignKey("GoodsReceiptId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("GoodsReceipt");
-                });
-
             modelBuilder.Entity("Wms.Domain.Entity.Inventorys.Inventory", b =>
                 {
                     b.HasOne("Wms.Domain.Entity.Warehouses.Location", null)
@@ -1453,11 +1397,73 @@ namespace Wms.Infrastructure.Migrations
                     b.Navigation("Unit");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssue", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.GoodsReceipt", b =>
                 {
-                    b.HasOne("Wms.Domain.Entity.Outbound.OutboundOrder", "OutboundOrder")
+                    b.HasOne("Wms.Domain.Entity.Purchase.PurchaseOrder", "PurchaseOrder")
+                        .WithMany("GoodsReceipts")
+                        .HasForeignKey("PurchaseOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("PurchaseOrder");
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.GoodsReceiptItem", b =>
+                {
+                    b.HasOne("Wms.Domain.Entity.Purchase.GoodsReceipt", "GoodsReceipt")
+                        .WithMany("Items")
+                        .HasForeignKey("GoodsReceiptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GoodsReceipt");
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.ProductionReceiptItem", b =>
+                {
+                    b.HasOne("Wms.Domain.Entity.Purchase.GoodsReceipt", "GoodsReceipt")
+                        .WithMany("Productions")
+                        .HasForeignKey("GoodsReceiptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GoodsReceipt");
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.PurchaseOrder", b =>
+                {
+                    b.HasOne("Wms.Domain.Entity.MasterData.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.PurchaseOrderItem", b =>
+                {
+                    b.HasOne("Wms.Domain.Entity.Purchase.PurchaseOrder", "PurchaseOrder")
+                        .WithMany("Items")
+                        .HasForeignKey("PurchaseOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Wms.Domain.Entity.Warehouses.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PurchaseOrder");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.GoodsIssue", b =>
+                {
+                    b.HasOne("Wms.Domain.Entity.Sales.SalesOrder", "SalesOrder")
                         .WithMany("GoodsIssues")
-                        .HasForeignKey("OutboundOrderId")
+                        .HasForeignKey("SalesOrderId")
                         .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Wms.Domain.Entity.Warehouses.Warehouse", "Warehouse")
@@ -1466,14 +1472,14 @@ namespace Wms.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("OutboundOrder");
+                    b.Navigation("SalesOrder");
 
                     b.Navigation("Warehouse");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssueAllocate", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.GoodsIssueAllocate", b =>
                 {
-                    b.HasOne("Wms.Domain.Entity.Outbound.GoodsIssueItem", "GoodsIssueItem")
+                    b.HasOne("Wms.Domain.Entity.Sales.GoodsIssueItem", "GoodsIssueItem")
                         .WithMany("Allocations")
                         .HasForeignKey("GoodsIssueItemId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1488,9 +1494,9 @@ namespace Wms.Infrastructure.Migrations
                     b.Navigation("Location");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssueItem", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.GoodsIssueItem", b =>
                 {
-                    b.HasOne("Wms.Domain.Entity.Outbound.GoodsIssue", "GoodsIssue")
+                    b.HasOne("Wms.Domain.Entity.Sales.GoodsIssue", "GoodsIssue")
                         .WithMany("Items")
                         .HasForeignKey("GoodsIssueId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1501,27 +1507,26 @@ namespace Wms.Infrastructure.Migrations
                         .HasForeignKey("LocationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Wms.Domain.Entity.Outbound.OutboundOrderItem", "OutboundOrderItem")
-                        .WithMany()
-                        .HasForeignKey("OutboundOrderItemId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Wms.Domain.Entity.MasterData.Product", "Product")
                         .WithMany()
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Wms.Domain.Entity.Sales.SalesOrderItem", "SalesOrderItem")
+                        .WithMany()
+                        .HasForeignKey("SalesOrderItemId");
+
                     b.Navigation("GoodsIssue");
 
                     b.Navigation("Location");
 
-                    b.Navigation("OutboundOrderItem");
-
                     b.Navigation("Product");
+
+                    b.Navigation("SalesOrderItem");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.OutboundOrder", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.SalesOrder", b =>
                 {
                     b.HasOne("Wms.Domain.Entity.MasterData.Customer", "Customer")
                         .WithMany()
@@ -1532,18 +1537,18 @@ namespace Wms.Infrastructure.Migrations
                     b.Navigation("Customer");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.OutboundOrderItem", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.SalesOrderItem", b =>
                 {
-                    b.HasOne("Wms.Domain.Entity.Outbound.OutboundOrder", "OutboundOrder")
-                        .WithMany("Items")
-                        .HasForeignKey("OutboundOrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("Wms.Domain.Entity.MasterData.Product", "Product")
                         .WithMany()
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Wms.Domain.Entity.Sales.SalesOrder", "SalesOrder")
+                        .WithMany("Items")
+                        .HasForeignKey("SalesOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.HasOne("Wms.Domain.Entity.Warehouses.Warehouse", "warehouse")
@@ -1552,9 +1557,9 @@ namespace Wms.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("OutboundOrder");
-
                     b.Navigation("Product");
+
+                    b.Navigation("SalesOrder");
 
                     b.Navigation("warehouse");
                 });
@@ -1683,31 +1688,31 @@ namespace Wms.Infrastructure.Migrations
                     b.Navigation("UserRoles");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.GoodsReceipt", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.GoodsReceipt", b =>
                 {
                     b.Navigation("Items");
 
                     b.Navigation("Productions");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Inbound.InboundOrder", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Purchase.PurchaseOrder", b =>
                 {
                     b.Navigation("GoodsReceipts");
 
                     b.Navigation("Items");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssue", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.GoodsIssue", b =>
                 {
                     b.Navigation("Items");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssueItem", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.GoodsIssueItem", b =>
                 {
                     b.Navigation("Allocations");
                 });
 
-            modelBuilder.Entity("Wms.Domain.Entity.Outbound.OutboundOrder", b =>
+            modelBuilder.Entity("Wms.Domain.Entity.Sales.SalesOrder", b =>
                 {
                     b.Navigation("GoodsIssues");
 

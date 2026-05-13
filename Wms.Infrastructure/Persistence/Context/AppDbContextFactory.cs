@@ -12,7 +12,7 @@ namespace Wms.Infrastructure.Persistence.Context
 
             // Connection string MySQL
             optionsBuilder.UseMySql(
-                "server=localhost;port=3306;database=WmsDb2;user=root;password=Dat2402@",
+                "server=localhost;port=3306;database=WmsDb222;user=testuser;password=123456",
                 new MySqlServerVersion(new Version(8, 0, 32)) // phiến bản MySQL của bạn
             );
 

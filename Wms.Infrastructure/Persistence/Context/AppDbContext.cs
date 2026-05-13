@@ -1,14 +1,9 @@
-﻿using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Wms.Domain.Entity.Auth;
 using Wms.Domain.Entity.Inventorys;
-using Wms.Domain.Entity.Purchase;
+using Wms.Domain.Entity.Inbound;
 using Wms.Domain.Entity.MasterData;
-using Wms.Domain.Entity.Sales;
+using Wms.Domain.Entity.Outbound;
 using Wms.Domain.Entity.Warehouses;
 using Wms.Domain.Entity.Transfer;
 using Wms.Domain.Entity.StockTakes;
@@ -44,21 +39,19 @@ namespace Wms.Infrastructure.Persistence.Context
         public DbSet<InventoryHistory> InventoryHistories => Set<InventoryHistory>();
         public DbSet<Lot> Lots => Set<Lot>();
 
-
-
-        // PURCHASE
-        public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
-        public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
+        // INBOUND
+        public DbSet<InboundOrder> InboundOrders => Set<InboundOrder>();
+        public DbSet<InboundOrderItem> InboundOrderItems => Set<InboundOrderItem>();
         public DbSet<GoodsReceipt> GoodsReceipts => Set<GoodsReceipt>();
         public DbSet<GoodsReceiptItem> GoodsReceiptItems => Set<GoodsReceiptItem>();
         public DbSet<ProductionReceiptItem> ProductionReceiptItems => Set<ProductionReceiptItem>();
 
-        // SALES
-        public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
-        public DbSet<SalesOrderItem> SalesOrderItems => Set<SalesOrderItem>();
+        // OUTBOUND
+        public DbSet<OutboundOrder> OutboundOrders => Set<OutboundOrder>();
+        public DbSet<OutboundOrderItem> OutboundOrderItems => Set<OutboundOrderItem>();
         public DbSet<GoodsIssue> GoodsIssues => Set<GoodsIssue>();
         public DbSet<GoodsIssueItem> GoodsIssueItems => Set<GoodsIssueItem>();
-        public DbSet<GoodsIssueAllocate> goodsIssueAllocates => Set<GoodsIssueAllocate>();
+        public DbSet<GoodsIssueAllocate> GoodsIssueAllocates => Set<GoodsIssueAllocate>();
 
         // TRANSFER
         public DbSet<TransferOrder> TransferOrders => Set<TransferOrder>();
@@ -68,16 +61,11 @@ namespace Wms.Infrastructure.Persistence.Context
         public DbSet<StockTake> StockTakes => Set<StockTake>();
         public DbSet<StockTakeItem> StockTakeItems => Set<StockTakeItem>();
 
-        //// SYSTEM
-        //public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
-        //public DbSet<ErrorLog> ErrorLogs => Set<ErrorLog>();
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // Auto-load tất cả configuration trong Infrastructure
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
-
             base.OnModelCreating(modelBuilder);
         }
     }
-
 }
+
