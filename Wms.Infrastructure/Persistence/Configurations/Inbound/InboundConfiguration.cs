@@ -111,6 +111,8 @@ namespace Wms.Infrastructure.Persistence.Configurations.Inbound
             builder.Property(x => x.Quantity)
                    .IsRequired();
 
+            builder.Property(x => x.InboundOrderItemId)
+                   .HasColumnName("POIid");
 
             builder.Property(x => x.CreatedAt)
                    .IsRequired();
