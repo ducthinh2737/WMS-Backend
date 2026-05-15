@@ -1,4 +1,4 @@
-﻿namespace Wms.Application.DTOS.StockTake;
+namespace Wms.Application.DTOS.StockTake;
 
 public class SubmitCountDto
 {
@@ -10,6 +10,7 @@ public class ItemCountDto
 {
     public Guid LocationId { get; set; }
     public int ProductId { get; set; }
+    public Guid? LotId { get; set; }
     public decimal CountedQty { get; set; }
     public string? Note { get; set; }
 }

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using Wms.Domain.Entity.Warehouses;
 using Wms.Domain.Enums.StockTakes;
 
@@ -7,7 +7,7 @@ namespace Wms.Domain.Entity.StockTakes;
 public class StockTake
 {
     [Key]
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid Id { get; set; }
 
     [Required, MaxLength(50)]
     public string Code { get; set; } // ST-20251222-001

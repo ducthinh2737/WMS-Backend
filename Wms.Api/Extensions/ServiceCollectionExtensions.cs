@@ -16,6 +16,7 @@ using Wms.Application.Services.Warehouses;
 using Wms.Application.Services.Transfer;
 using Wms.Application.Interfaces.Services.Transfer;
 using Wms.Application.Interfaces.Services.StockTake;
+using Wms.Application.Services.StockTake;
 
 
 
@@ -56,6 +57,8 @@ namespace Wms.Api.Extensions // Đảm bảo đúng namespace của API project
             services.AddScoped<ITransferService, TransferService>();
 
             //STOCKTAKE
+            services.AddScoped<IStockTakeService, StockTakeService>();
+
             return services;
         }
     }

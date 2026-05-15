@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using Wms.Domain.Entity.MasterData;
 using Wms.Domain.Entity.Warehouses;
 
@@ -18,6 +18,8 @@ public class StockTakeItem
     [Required]
     public int ProductId { get; set; }
     public Product Product { get; set; }
+
+    public Guid? LotId { get; set; }
 
     // Số lượng trên hệ thống lúc bắt đầu kiểm kê
     public decimal SystemQty { get; set; }

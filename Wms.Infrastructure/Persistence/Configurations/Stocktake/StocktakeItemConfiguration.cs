@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using System;
 using System.Collections.Generic;
@@ -23,6 +23,7 @@ namespace Wms.Infrastructure.Persistence.Configurations.Stocktake
             builder.HasOne(x => x.Location)
                    .WithMany()
                    .HasForeignKey(x => x.LocationId)
+                   .IsRequired(false)
                    .OnDelete(DeleteBehavior.Restrict);
 
             builder.HasOne(x => x.Product)

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Wms.Application.DTOs.Inventorys;
 using Wms.Application.DTOS.Warehouse;
 using Wms.Application.Exceptions;
@@ -284,7 +284,8 @@ namespace Wms.Application.Services.Inventorys
             DateTime? manufacturingDate = null,
             string? note = null)
         {
-            if (qty <= 0) throw new Exception("Số lượng phải lớn hơn 0");
+            if (qty == 0)
+    return;
 
             // Normalize: chỉ giữ phần ngày, bỏ giờ để tránh lệch timezone
             expiryDate = NormalizeDateOnly(expiryDate);
@@ -325,9 +326,31 @@ namespace Wms.Application.Services.Inventorys
             }
 
             // 2. TÍNH TOÁN DẤU
-            decimal signedQty = (actionType == InventoryActionType.Receive ||
-                                 actionType == InventoryActionType.AdjustIncrease ||
-                                 actionType == InventoryActionType.TransferIn) ? qty : -qty;
+            decimal signedQty;
+
+switch (actionType)
+{
+    case InventoryActionType.Receive:
+    case InventoryActionType.TransferIn:
+    case InventoryActionType.AdjustIncrease:
+        signedQty = Math.Abs(qty);
+        break;
+
+    case InventoryActionType.TransferOut:
+    case InventoryActionType.AdjustDecrease:
+    case InventoryActionType.Issue:
+        signedQty = -Math.Abs(qty);
+        break;
+
+    case InventoryActionType.StockTakeAdjustment:
+        // KIỂM KÊ CHO PHÉP ÂM/DƯƠNG
+        signedQty = qty;
+        break;
+
+    default:
+        signedQty = qty;
+        break;
+}
 
             // 3. CẬP NHẬT BẢNG INVENTORY
             var inv = await _db.Inventories.FirstOrDefaultAsync(x =>
@@ -355,6 +378,7 @@ namespace Wms.Application.Services.Inventorys
 
             inv.OnHandQuantity += signedQty;
             inv.UpdatedAt = DateTime.UtcNow;
+            _db.Inventories.Update(inv);
 
             // 4. GHI LỊCH SỬ
             _db.InventoryHistories.Add(new InventoryHistory
@@ -403,6 +427,7 @@ namespace Wms.Application.Services.Inventorys
             }
 
             inventory.UpdatedAt = DateTime.UtcNow;
+            _db.Inventories.Update(inventory);
         }
 
         public async Task AdjustAsync(
@@ -432,6 +457,7 @@ namespace Wms.Application.Services.Inventorys
             }
 
             inventory.UpdatedAt = DateTime.UtcNow;
+            _db.Inventories.Update(inventory);
         }
 
         public async Task<List<LocationStockDto>> GetAvailableLocationsByLot(

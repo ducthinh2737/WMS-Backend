@@ -1,4 +1,4 @@
-﻿namespace Wms.Application.DTOS.StockTake;
+namespace Wms.Application.DTOS.StockTake;
 
 public class StockTakeDto
 {
@@ -24,6 +24,8 @@ public class StockTakeItemDto
     public int ProductId { get; set; }
     public string? ProductName { get; set; }
     public string? SKU { get; set; }
+    public Guid? LotId { get; set; }
+    public string? LotCode { get; set; }
 
     public decimal SystemQty { get; set; } // Số lượng sổ sách
     public decimal CountedQty { get; set; } // Số lượng thực tế
