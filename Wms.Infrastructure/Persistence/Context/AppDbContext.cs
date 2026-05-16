@@ -37,6 +37,7 @@ namespace Wms.Infrastructure.Persistence.Context
         //// INVENTORY
         public DbSet<Inventory> Inventories => Set<Inventory>();
         public DbSet<InventoryHistory> InventoryHistories => Set<InventoryHistory>();
+        public DbSet<InventoryTransaction> InventoryTransactions => Set<InventoryTransaction>();
         public DbSet<Lot> Lots => Set<Lot>();
 
         // INBOUND

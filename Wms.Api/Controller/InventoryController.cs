@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Wms.Api.Middlewares;
 using Wms.Application.DTOs.Inventorys;
 using Wms.Application.DTOS.Warehouse;
@@ -13,7 +13,13 @@ namespace Wms.Api.Controllers;
 public class InventoryController : ControllerBase
 {
     private readonly IInventoryService _service;
-    public InventoryController(IInventoryService service) => _service = service;
+    private readonly Wms.Infrastructure.Persistence.Context.AppDbContext _db;
+
+    public InventoryController(IInventoryService service, Wms.Infrastructure.Persistence.Context.AppDbContext db)
+    {
+        _service = service;
+        _db = db;
+    }
 
     // =========================
     // GET INVENTORY BY ID
@@ -46,6 +52,7 @@ public class InventoryController : ControllerBase
         try
         {
             await _service.PutAway(dto);
+            await _db.SaveChangesAsync();
             return Ok(new { Message = "Putaway completed successfully" });
         }
         catch (Exception ex)
@@ -132,6 +139,7 @@ public class InventoryController : ControllerBase
             req.RefCode,
             req.Note
         );
+        await _db.SaveChangesAsync();
         return Ok();
     }
 
@@ -147,6 +155,7 @@ public class InventoryController : ControllerBase
         else
             await _service.UnlockStockAsync(req.WarehouseId, req.LocationId, req.ProductId, req.Quantity, note: null);
 
+        await _db.SaveChangesAsync();
         return Ok();
     }
 

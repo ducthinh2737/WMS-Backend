@@ -1,4 +1,4 @@
-﻿using Wms.Domain.Enums.Inventory;
+using Wms.Domain.Enums.Inventory;
 namespace Wms.Domain.Entity.Inventorys;
 
 public class InventoryHistory
@@ -7,6 +7,8 @@ public class InventoryHistory
     public Guid WarehouseId { get; set; }
     public Guid? LocationId { get; set; }
     public int ProductId { get; set; }
+    public Guid LotId { get; set; }
+    public string? LotCode { get; set; }
     public decimal QuantityChange { get; set; }
     public string Note { get; set; }
     public InventoryActionType ActionType { get; set; } // Nhập/xuất/chuyển/kiểm kê

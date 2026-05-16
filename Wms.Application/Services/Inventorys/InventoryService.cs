@@ -7,15 +7,14 @@ using Wms.Application.Interfaces.Services.Warehouse;
 using Wms.Domain.Entity.Inventorys;
 using Wms.Domain.Entity.MasterData;
 using Wms.Domain.Enums.Inventory;
+using Wms.Domain.Enums.location;
 using Wms.Infrastructure.Persistence.Context;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
 namespace Wms.Application.Services.Inventorys
 {
     public class InventoryService : IInventoryService
     {
         private readonly AppDbContext _db;
-        public static readonly Guid RECEIVING_LOCATION_GUID = new Guid("11111111-2222-3333-4444-555555555555");
         private readonly IWarehouseService warehouseService;
 
         public InventoryService(AppDbContext db, IWarehouseService warehouse)
@@ -42,6 +41,17 @@ namespace Wms.Application.Services.Inventorys
 
             if (inventory == null)
             {
+                // Check local tracker in case it was added in the same transaction
+                inventory = _db.Inventories.Local
+                    .FirstOrDefault(x =>
+                        x.WarehouseId == warehouseId &&
+                        x.LocationId == locationId &&
+                        x.ProductId == productId &&
+                        x.LotId == lotId);
+            }
+
+            if (inventory == null)
+            {
                 inventory = new Inventory
                 {
                     Id = Guid.NewGuid(),
@@ -51,7 +61,8 @@ namespace Wms.Application.Services.Inventorys
                     LotId = lotId,
                     OnHandQuantity = 0,
                     LockedQuantity = 0,
-                    InTransitQuantity = 0
+                    InTransitQuantity = 0,
+                    CreatedAt = DateTime.UtcNow
                 };
 
                 _db.Inventories.Add(inventory);
@@ -62,123 +73,113 @@ namespace Wms.Application.Services.Inventorys
 
         public async Task<List<LocationQtyDto>> GetAvailableLocations(int productId, Guid warehouseId)
         {
-            var result = await (
-                from inv in _db.Inventories
-                join loc in _db.Locations on inv.LocationId equals loc.Id
-                join lot in _db.Lots on inv.LotId equals lot.Id
-                where inv.WarehouseId == warehouseId
+            return await _db.Inventories
+                .Include(x => x.Lot)
+                .Include(x => x.Product)
+                .Where(inv => inv.WarehouseId == warehouseId
                     && inv.ProductId == productId
-                    && (inv.OnHandQuantity - inv.LockedQuantity) > 0
-                select new LocationQtyDto
+                    && (inv.OnHandQuantity - inv.LockedQuantity) > 0)
+                .Select(inv => new LocationQtyDto
                 {
-                    Id = loc.Id,
+                    Id = inv.LocationId ?? Guid.Empty,
                     WarehouseId = inv.WarehouseId,
-                    Type = loc.Type,
-                    Code = loc.Code,
+                    Type = _db.Locations.Where(l => l.Id == inv.LocationId).Select(l => l.Type).FirstOrDefault(),
+                    Code = _db.Locations.Where(l => l.Id == inv.LocationId).Select(l => l.Code).FirstOrDefault(),
                     AvailableQty = inv.OnHandQuantity - inv.LockedQuantity,
-                    Description = loc.Description,
-                    IsActive = loc.IsActive,
-                    CreatedAt = loc.CreatedAt,
-                    UpdatedAt = loc.UpdatedAt,
                     LotId = inv.LotId,
-                    LotCode = lot.Code,
-                    ExpiryDate = lot.ExpiryDate,
-                    ManufacturingDate = lot.ManufacturingDate
-                }
-            ).ToListAsync();
-
-            return result;
+                    LotCode = inv.Lot.Code,
+                    ExpiryDate = inv.Lot.ExpiryDate,
+                    ManufacturingDate = inv.Lot.ManufacturingDate
+                })
+                .ToListAsync();
         }
 
         public async Task PutAway(PutawayDto dto)
         {
-            if (dto.Qty <= 0) throw new Exception("Số lượng putaway phải > 0");
-            var lotcheck = await _db.Lots.FirstOrDefaultAsync(s => s.Id == dto.LotId);
+            if (dto.Qty <= 0) throw new BusinessException("INVALID_QUANTITY", "Số lượng putaway phải > 0");
 
-            // 1️⃣ Trừ ở Receiving location
-            await AdjustAsync(
-                dto.WarehouseId,
-                dto.FromLocationId,
-                dto.ProductId,
-                dto.Qty,
-                InventoryActionType.TransferOut,
-                refCode: "PUTAWAY",
-                lotId: dto.LotId,
-                lotCode: lotcheck.Code,
-                note: "Putaway from Receiving"
-            );
+            var fromLoc = await _db.Locations.FirstOrDefaultAsync(l => l.Id == dto.FromLocationId);
+            var toLoc = await _db.Locations.FirstOrDefaultAsync(l => l.Id == dto.ToLocationId);
 
-            await AdjustAsync(
-                dto.WarehouseId,
-                dto.ToLocationId,
-                dto.ProductId,
-                dto.Qty,
-                InventoryActionType.TransferIn,
-                refCode: "PUTAWAY",
-                lotId: dto.LotId,
-                note: "Putaway to Storage"
-            );
+            if (fromLoc == null || toLoc == null) throw new BusinessException("LOCATION_NOT_FOUND", "Vị trí không tồn tại");
 
-            await _db.SaveChangesAsync();
+            // Validate: Receiving -> Storage
+            if (fromLoc.Type != LocationType.Receiving || toLoc.Type != LocationType.Storage)
+            {
+                throw new BusinessException("INVALID_PUTAWAY_FLOW", "Putaway chỉ được phép từ Receiving sang Storage");
+            }
+
+            var lot = await _db.Lots.FirstOrDefaultAsync(s => s.Id == dto.LotId);
+            if (lot == null) throw new BusinessException("LOT_NOT_FOUND", "Lô hàng không tồn tại");
+
+            var transferRef = $"PUTAWAY-{Guid.NewGuid()}";
+
+// OUT
+await AdjustAsync(
+    dto.WarehouseId,
+    dto.FromLocationId,
+    dto.ProductId,
+    dto.Qty,
+    InventoryActionType.TransferOut,
+    lotId: dto.LotId,
+    refCode: $"{transferRef}-OUT",
+    note: $"Putaway from {fromLoc.Code} to {toLoc.Code}"
+);
+
+// IN
+await AdjustAsync(
+    dto.WarehouseId,
+    dto.ToLocationId,
+    dto.ProductId,
+    dto.Qty,
+    InventoryActionType.TransferIn,
+    lotId: dto.LotId,
+    refCode: $"{transferRef}-IN",
+    note: $"Putaway from {fromLoc.Code} to {toLoc.Code}"
+);
+
+            // SaveChanges handled by caller
         }
 
         public async Task<InventoryDto?> GetAsync(Guid id)
         {
             return await _db.Inventories
-                .Join(_db.Locations,
-                      inv => inv.LocationId,
-                      loc => loc.Id,
-                      (inv, loc) => new InventoryDto
-                      {
-                          Id = inv.Id,
-                          WarehouseId = inv.WarehouseId,
-                          LocationId = inv.LocationId,
-                          ProductId = inv.ProductId,
-                          OnHandQuantity = inv.OnHandQuantity,
-                          LockedQuantity = inv.LockedQuantity,
-                          InTransitQuantity = inv.InTransitQuantity,
-                          LocationType = loc.Type
-                      })
+                .Include(x => x.Lot)
+                .Include(x => x.Product)
+                .Select(inv => new InventoryDto
+                {
+                    Id = inv.Id,
+                    WarehouseId = inv.WarehouseId,
+                    LocationId = inv.LocationId,
+                    ProductId = inv.ProductId,
+                    LotId = inv.LotId,
+                    LotCode = inv.Lot.Code,
+                    OnHandQuantity = inv.OnHandQuantity,
+                    LockedQuantity = inv.LockedQuantity,
+                    InTransitQuantity = inv.InTransitQuantity,
+                    LocationType = _db.Locations.Where(l => l.Id == inv.LocationId).Select(l => l.Type).FirstOrDefault()
+                })
                 .FirstOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<List<InventoryDto>> GetInventoryByProductType(ProductType1Dto dto)
         {
-            var result = await _db.Inventories
+            return await _db.Inventories
                 .Where(i => i.Product.Type == dto.ProductType)
-                .GroupBy(i => new
-                {
-                    i.ProductId,
-                    i.WarehouseId
-                })
+                .GroupBy(i => new { i.ProductId, i.WarehouseId })
                 .Select(g => new InventoryDto
                 {
                     ProductId = g.Key.ProductId,
                     WarehouseId = g.Key.WarehouseId,
-
-                    WarehouseName = _db.Warehouses
-                        .Where(w => w.Id == g.Key.WarehouseId)
-                        .Select(w => w.Name)
-                        .FirstOrDefault(),
-
-                    ProductName = _db.Products
-                        .Where(p => p.Id == g.Key.ProductId)
-                        .Select(p => p.Name)
-                        .FirstOrDefault(),
-
-                    ProductCode = _db.Products
-                        .Where(p => p.Id == g.Key.ProductId)
-                        .Select(p => p.Code)
-                        .FirstOrDefault(),
-
+                    WarehouseName = _db.Warehouses.Where(w => w.Id == g.Key.WarehouseId).Select(w => w.Name).FirstOrDefault(),
+                    ProductName = _db.Products.Where(p => p.Id == g.Key.ProductId).Select(p => p.Name).FirstOrDefault(),
+                    ProductCode = _db.Products.Where(p => p.Id == g.Key.ProductId).Select(p => p.Code).FirstOrDefault(),
                     OnHandQuantity = g.Sum(x => x.OnHandQuantity),
                     LockedQuantity = g.Sum(x => x.LockedQuantity),
                     InTransitQuantity = g.Sum(x => x.InTransitQuantity),
                 })
                 .AsNoTracking()
                 .ToListAsync();
-
-            return result;
         }
 
         public async Task<List<InventoryDto>> QueryAsync(InventoryQueryDto dto)
@@ -189,49 +190,27 @@ namespace Wms.Application.Services.Inventorys
                 .AsNoTracking()
                 .AsQueryable();
 
-            if (dto.WarehouseId.HasValue)
-                query = query.Where(x => x.WarehouseId == dto.WarehouseId);
-
-            if (dto.LocationId.HasValue)
-                query = query.Where(x => x.LocationId == dto.LocationId);
-
-            if (dto.ProductId.HasValue)
-                query = query.Where(x => x.ProductId == dto.ProductId);
-
-            if (dto.ProductIds != null && dto.ProductIds.Any())
-                query = query.Where(x => dto.ProductIds.Contains(x.ProductId));
-
-            if (!string.IsNullOrEmpty(dto.LotCode))
-                query = query.Where(x => x.Lot.Code.Contains(dto.LotCode));
+            if (dto.WarehouseId.HasValue) query = query.Where(x => x.WarehouseId == dto.WarehouseId);
+            if (dto.LocationId.HasValue) query = query.Where(x => x.LocationId == dto.LocationId);
+            if (dto.ProductId.HasValue) query = query.Where(x => x.ProductId == dto.ProductId);
+            if (dto.ProductIds != null && dto.ProductIds.Any()) query = query.Where(x => dto.ProductIds.Contains(x.ProductId));
+            if (!string.IsNullOrEmpty(dto.LotCode)) query = query.Where(x => x.Lot.Code.Contains(dto.LotCode));
 
             return await query
                 .Select(inv => new InventoryDto
                 {
                     Id = inv.Id,
                     WarehouseId = inv.WarehouseId,
-                    WarehouseName = _db.Warehouses
-                        .Where(w => w.Id == inv.WarehouseId)
-                        .Select(w => w.Name)
-                        .FirstOrDefault(),
-
+                    WarehouseName = _db.Warehouses.Where(w => w.Id == inv.WarehouseId).Select(w => w.Name).FirstOrDefault(),
                     LocationId = inv.LocationId,
-                    LocationCode = _db.Locations
-                        .Where(l => l.Id == inv.LocationId)
-                        .Select(l => l.Code)
-                        .FirstOrDefault(),
-                    LocationType = _db.Locations
-                        .Where(l => l.Id == inv.LocationId)
-                        .Select(l => l.Type)
-                        .FirstOrDefault(),
-
+                    LocationCode = _db.Locations.Where(l => l.Id == inv.LocationId).Select(l => l.Code).FirstOrDefault(),
+                    LocationType = _db.Locations.Where(l => l.Id == inv.LocationId).Select(l => l.Type).FirstOrDefault(),
                     ProductId = inv.ProductId,
                     ProductName = inv.Product.Name,
                     ProductCode = inv.Product.Code,
-
                     LotId = inv.LotId,
                     LotCode = inv.Lot.Code,
                     ExpiryDate = inv.Lot.ExpiryDate,
-
                     OnHandQuantity = inv.OnHandQuantity,
                     LockedQuantity = inv.LockedQuantity,
                     InTransitQuantity = inv.InTransitQuantity,
@@ -239,11 +218,9 @@ namespace Wms.Application.Services.Inventorys
                 .ToListAsync();
         }
 
-        // =========================
-        // INVENTORY HISTORY
-        // =========================
         public async Task<List<InventoryHistoryDto>> GetHistoryAsync(int productId)
-            => await _db.InventoryHistories
+        {
+            return await _db.InventoryHistories
                 .Where(x => x.ProductId == productId)
                 .OrderByDescending(x => x.CreatedAt)
                 .Select(x => new InventoryHistoryDto
@@ -252,6 +229,8 @@ namespace Wms.Application.Services.Inventorys
                     WarehouseId = x.WarehouseId,
                     LocationId = x.LocationId,
                     ProductId = x.ProductId,
+                    LotId = x.LotId,
+                    LotCode = x.LotCode,
                     QuantityChange = x.QuantityChange,
                     ActionType = x.ActionType,
                     ReferenceCode = x.ReferenceCode,
@@ -259,18 +238,11 @@ namespace Wms.Application.Services.Inventorys
                     CreatedAt = x.CreatedAt
                 })
                 .ToListAsync();
-
-        // =========================
-        // ADJUST INVENTORY
-        // =========================
-        // Normalize DateTime về đúng ngày (bỏ phần giờ)
-        // Frontend gửi "YYYY-MM-DD" → ASP.NET parse thành Unspecified 00:00:00 → .Date là đúng
-        private static DateTime? NormalizeDateOnly(DateTime? dt)
-        {
-            if (dt == null) return null;
-            return dt.Value.Date; // luôn lấy phần ngày, bỏ giờ
         }
 
+        // =========================
+        // ADJUST INVENTORY (UNIFIED)
+        // =========================
         public async Task AdjustAsync(
             Guid warehouseId,
             Guid locationId,
@@ -284,25 +256,33 @@ namespace Wms.Application.Services.Inventorys
             DateTime? manufacturingDate = null,
             string? note = null)
         {
-            if (qty == 0)
-    return;
+            if (qty == 0 && actionType != InventoryActionType.StockTakeAdjustment) return;
 
-            // Normalize: chỉ giữ phần ngày, bỏ giờ để tránh lệch timezone
-            expiryDate = NormalizeDateOnly(expiryDate);
-            manufacturingDate = NormalizeDateOnly(manufacturingDate);
+            // 1. Idempotency Check
+            if (!string.IsNullOrEmpty(refCode))
+            {
+                var isProcessed = await _db.InventoryTransactions.AnyAsync(t =>
+                    t.ReferenceCode == refCode &&
+                    t.ProductId == productId &&
+                    t.LotId == (lotId ?? Guid.Empty) &&
+                    t.LocationId == locationId &&
+                    t.ActionType == actionType);
 
-            // 1. XÁC ĐỊNH LOT ID
+                if (isProcessed) return;
+            }
+
+            // 2. Resolve Lot
             Guid finalLotId;
+            string finalLotCode = lotCode ?? "";
             if (lotId.HasValue)
             {
                 finalLotId = lotId.Value;
+                var lot = await _db.Lots.FindAsync(lotId.Value);
+                finalLotCode = lot?.Code ?? "";
             }
             else
             {
-                // Ưu tiên tìm trong tracker (Local) trước để tránh thêm trùng LotCode trong cùng transaction
-                var lot = _db.Lots.Local.FirstOrDefault(x => x.productId == productId && x.Code == lotCode)
-                          ?? await _db.Lots.FirstOrDefaultAsync(x => x.productId == productId && x.Code == lotCode);
-
+                var lot = await _db.Lots.FirstOrDefaultAsync(x => x.productId == productId && x.Code == lotCode);
                 if (lot == null)
                 {
                     lot = new Lot
@@ -310,89 +290,63 @@ namespace Wms.Application.Services.Inventorys
                         Id = Guid.NewGuid(),
                         productId = productId,
                         Code = lotCode,
-                        ExpiryDate = expiryDate,
-                        ManufacturingDate = manufacturingDate,
+                        ExpiryDate = expiryDate?.Date,
+                        ManufacturingDate = manufacturingDate?.Date,
                         CreatedAt = DateTime.UtcNow
                     };
                     _db.Lots.Add(lot);
                 }
-                else
-                {
-                    // Cập nhật nếu lot đã tồn tại nhưng chưa có ngày
-                    if (lot.ExpiryDate == null && expiryDate != null)
-                        lot.ExpiryDate = expiryDate;
-                    if (lot.ManufacturingDate == null && manufacturingDate != null)
-                        lot.ManufacturingDate = manufacturingDate;
-                }
                 finalLotId = lot.Id;
             }
 
-            // 2. TÍNH TOÁN DẤU
-            decimal signedQty;
-
-switch (actionType)
-{
-    case InventoryActionType.Receive:
-    case InventoryActionType.TransferIn:
-    case InventoryActionType.AdjustIncrease:
-        signedQty = Math.Abs(qty);
-        break;
-
-    case InventoryActionType.TransferOut:
-    case InventoryActionType.AdjustDecrease:
-    case InventoryActionType.Issue:
-        signedQty = -Math.Abs(qty);
-        break;
-
-    case InventoryActionType.StockTakeAdjustment:
-        // KIỂM KÊ CHO PHÉP ÂM/DƯƠNG
-        signedQty = qty;
-        break;
-
-    default:
-        signedQty = qty;
-        break;
-}
-
-            // 3. CẬP NHẬT BẢNG INVENTORY
-            // Ưu tiên tìm trong tracker (Local) trước
-            var inv = _db.Inventories.Local.FirstOrDefault(x =>
-                x.WarehouseId == warehouseId && x.LocationId == locationId &&
-                x.ProductId == productId && x.LotId == finalLotId)
-                ?? await _db.Inventories.FirstOrDefaultAsync(x =>
-                x.WarehouseId == warehouseId && x.LocationId == locationId &&
-                x.ProductId == productId && x.LotId == finalLotId);
-
-            if (inv == null)
+            // 3. Calculate Signed Qty
+            decimal signedQty = actionType switch
             {
-                if (signedQty < 0) throw new Exception("Không tìm thấy tồn kho để trừ.");
-                inv = new Inventory
+                InventoryActionType.Receive or InventoryActionType.TransferIn or InventoryActionType.AdjustIncrease => Math.Abs(qty),
+                InventoryActionType.TransferOut or InventoryActionType.AdjustDecrease or InventoryActionType.Issue or InventoryActionType.Lock => -Math.Abs(qty),
+                _ => qty
+            };
+
+            // 4. Update Inventory
+            var inv = await GetOrCreateInventoryAsync(warehouseId, locationId, productId, finalLotId);
+
+            // Validation: Prevent negative inventory (OnHand - Locked)
+            if (signedQty < 0 && (inv.OnHandQuantity + signedQty < inv.LockedQuantity))
+            {
+                throw new BusinessException("INSUFFICIENT_STOCK", $"Không đủ tồn kho khả dụng (Có: {inv.AvailableQuantity}, Yêu cầu: {Math.Abs(signedQty)})");
+            }
+
+            inv.OnHandQuantity += signedQty;
+            Console.WriteLine(
+    $"Inventory Updated | Loc={locationId} | Product={productId} | Qty={inv.OnHandQuantity}"
+);
+            inv.UpdatedAt = DateTime.UtcNow;
+
+            // 5. Record Transaction (for consistency/idempotency)
+            if (!string.IsNullOrEmpty(refCode))
+            {
+                _db.InventoryTransactions.Add(new InventoryTransaction
                 {
-                    Id = Guid.NewGuid(),
+                    ReferenceCode = refCode,
                     WarehouseId = warehouseId,
                     LocationId = locationId,
                     ProductId = productId,
                     LotId = finalLotId,
-                    OnHandQuantity = 0,
+                    ActionType = actionType,
+                    Quantity = signedQty,
                     CreatedAt = DateTime.UtcNow
-                };
-                _db.Inventories.Add(inv);
+                });
             }
 
-            if (signedQty < 0 && (inv.OnHandQuantity + signedQty < 0))
-                throw new Exception($"Lô hàng này tại vị trí này không đủ tồn kho (Còn: {inv.OnHandQuantity})");
-
-            inv.OnHandQuantity += signedQty;
-            inv.UpdatedAt = DateTime.UtcNow;
-            // _db.Inventories.Update(inv); // BỎ: redundant và gây lỗi concurrency với New Entity (Added -> Modified)
-
-            // 4. GHI LỊCH SỬ
+            // 6. Record History (for audit)
             _db.InventoryHistories.Add(new InventoryHistory
             {
                 Id = Guid.NewGuid(),
                 WarehouseId = warehouseId,
                 LocationId = locationId,
                 ProductId = productId,
+                LotId = finalLotId,
+                LotCode = finalLotCode,
                 QuantityChange = signedQty,
                 ActionType = actionType,
                 ReferenceCode = refCode,
@@ -401,69 +355,16 @@ switch (actionType)
             });
         }
 
-        public async Task AdjustPickingAsync(
-            Guid warehouseId,
-            Guid locationId,
-            int productId,
-            decimal qty,
-            InventoryActionType actionType,
-            string refCode,
-            Guid lotId)
+        public async Task AdjustPickingAsync(Guid warehouseId, Guid locationId, int productId, decimal qty, InventoryActionType actionType, string refCode, Guid lotId)
         {
-            var inventory = await _db.Inventories
-                .FirstOrDefaultAsync(x =>
-                    x.WarehouseId == warehouseId &&
-                    x.LocationId == locationId &&
-                    x.ProductId == productId &&
-                    x.LotId == lotId);
-
-            if (inventory == null)
-                throw new Exception("INVENTORY_NOT_FOUND");
-
-            if (actionType == InventoryActionType.AdjustDecrease)
-            {
-                if (inventory.AvailableQuantity < qty)
-                    throw new Exception("NOT_ENOUGH_STOCK");
-
-                inventory.OnHandQuantity -= qty;
-            }
-            else
-            {
-                inventory.OnHandQuantity += qty;
-            }
-
-            inventory.UpdatedAt = DateTime.UtcNow;
-            // _db.Inventories.Update(inventory);
+            await AdjustAsync(warehouseId, locationId, productId, qty, actionType, lotId: lotId, refCode: refCode);
         }
 
-        public async Task AdjustAsync(
-            Guid warehouseId,
-            Guid locationId,
-            int productId,
-            decimal qty,
-            InventoryActionType actionType,
-            Guid lotId)
+        public async Task Adjust1Async(Guid warehouseId, Guid? locationId, int productId, decimal qtyChange, InventoryActionType actionType, string? refCode, string? note = null)
         {
-            var inventory = await GetOrCreateInventoryAsync(
-                warehouseId,
-                locationId,
-                productId,
-                lotId);
-
-            if (actionType == InventoryActionType.AdjustDecrease)
-            {
-                if (inventory.AvailableQuantity < qty)
-                    throw new Exception("NOT_ENOUGH_STOCK");
-
-                inventory.OnHandQuantity -= qty;
-            }
-            else
-            {
-                inventory.OnHandQuantity += qty;
-            }
-
-            inventory.UpdatedAt = DateTime.UtcNow;
-            // _db.Inventories.Update(inventory);
+            // Fallback for legacy calls
+            var locId = locationId ?? Guid.Empty; // Should ideally be a real location
+            await AdjustAsync(warehouseId, locId, productId, qtyChange, actionType, refCode: refCode, note: note);
         }
 
         public async Task<List<LocationStockDto>> GetAvailableLocationsByLot(
@@ -487,81 +388,15 @@ switch (actionType)
                 .ToListAsync();
         }
 
-        public async Task Adjust1Async(
-            Guid warehouseId,
-            Guid? locationId,
-            int productId,
-            decimal qtyChange,
-            InventoryActionType actionType,
-            string? refCode,
-            string? note = null)
-        {
-            var effectiveLocationId = locationId ?? RECEIVING_LOCATION_GUID;
-
-            var inv = await _db.Inventories
-                .FirstOrDefaultAsync(x =>
-                    x.WarehouseId == warehouseId &&
-                    x.LocationId == effectiveLocationId &&
-                    x.ProductId == productId);
-
-            if (inv == null)
-            {
-                inv = new Inventory
-                {
-                    Id = Guid.NewGuid(),
-                    WarehouseId = warehouseId,
-                    LocationId = effectiveLocationId,
-                    ProductId = productId,
-                    OnHandQuantity = 0,
-                    LockedQuantity = 0,
-                    InTransitQuantity = 0,
-                };
-                _db.Inventories.Add(inv);
-            }
-
-            if (inv.OnHandQuantity + qtyChange < 0)
-                throw new Exception("Not enough stock");
-
-            inv.OnHandQuantity += qtyChange;
-            inv.UpdatedAt = DateTime.UtcNow;
-
-            _db.InventoryHistories.Add(new InventoryHistory
-            {
-                Id = Guid.NewGuid(),
-                WarehouseId = warehouseId,
-                LocationId = effectiveLocationId,
-                ProductId = productId,
-                QuantityChange = qtyChange,
-                ActionType = actionType,
-                ReferenceCode = refCode,
-                Note = note,
-                CreatedAt = DateTime.UtcNow
-            });
-
-            await _db.SaveChangesAsync();
-        }
-
         // =========================
-        // LOCK STOCK
+        // LOCK / UNLOCK STOCK
         // =========================
-        public async Task LockStockAsync(
-            Guid warehouseId,
-            Guid locationId,
-            int productId,
-            decimal qty,
-            string? note = null)
+        public async Task LockStockAsync(Guid warehouseId, Guid locationId, int productId, decimal qty, string? note = null)
         {
-            var inv = await _db.Inventories
-                .FirstOrDefaultAsync(x =>
-                    x.WarehouseId == warehouseId &&
-                    x.LocationId == locationId &&
-                    x.ProductId == productId);
+            var inv = await _db.Inventories.FirstOrDefaultAsync(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId);
+            if (inv == null) throw new BusinessException("INVENTORY_NOT_FOUND", "Không tìm thấy tồn kho");
 
-            if (inv == null)
-                throw new Exception("Inventory not found");
-
-            if (inv.OnHandQuantity - inv.LockedQuantity < qty)
-                throw new Exception("Not enough available stock");
+            if (inv.AvailableQuantity < qty) throw new BusinessException("INSUFFICIENT_STOCK", "Không đủ tồn kho khả dụng để khóa");
 
             inv.LockedQuantity += qty;
             inv.UpdatedAt = DateTime.UtcNow;
@@ -577,31 +412,14 @@ switch (actionType)
                 Note = note,
                 CreatedAt = DateTime.UtcNow
             });
-
-            await _db.SaveChangesAsync();
         }
 
-        // =========================
-        // UNLOCK STOCK
-        // =========================
-        public async Task UnlockStockAsync(
-            Guid warehouseId,
-            Guid locationId,
-            int productId,
-            decimal qty,
-            string? note = null)
+        public async Task UnlockStockAsync(Guid warehouseId, Guid locationId, int productId, decimal qty, string? note = null)
         {
-            var inv = await _db.Inventories
-                .FirstOrDefaultAsync(x =>
-                    x.WarehouseId == warehouseId &&
-                    x.LocationId == locationId &&
-                    x.ProductId == productId);
+            var inv = await _db.Inventories.FirstOrDefaultAsync(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId);
+            if (inv == null) throw new BusinessException("INVENTORY_NOT_FOUND", "Không tìm thấy tồn kho");
 
-            if (inv == null)
-                throw new Exception("Inventory not found");
-
-            if (inv.LockedQuantity < qty)
-                throw new Exception("Cannot unlock more than locked quantity");
+            if (inv.LockedQuantity < qty) throw new BusinessException("INVALID_UNLOCK", "Không thể mở khóa nhiều hơn số lượng đã khóa");
 
             inv.LockedQuantity -= qty;
             inv.UpdatedAt = DateTime.UtcNow;
@@ -617,8 +435,6 @@ switch (actionType)
                 Note = note,
                 CreatedAt = DateTime.UtcNow
             });
-
-            await _db.SaveChangesAsync();
         }
     }
 }

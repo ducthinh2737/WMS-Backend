@@ -821,12 +821,33 @@ namespace Wms.Application.Services.Outbound
                     }
 
                     // ✅ SAVE TẤT CẢ: allocations + inventories
-                    var result = await _dbContext.SaveChangesAsync();
-                    Console.WriteLine($"\n✅ SaveChanges result: {result} rows affected");
+                    int retryCount = 0;
+                    const int maxRetries = 2;
 
-                    if (result == 0)
+                    while (true)
                     {
-                        Console.WriteLine("⚠️ WARNING: No rows were saved!");
+                        try
+                        {
+                            var result = await _dbContext.SaveChangesAsync();
+                            Console.WriteLine($"\n✅ SaveChanges result: {result} rows affected");
+                            break;
+                        }
+                        catch (DbUpdateConcurrencyException) when (retryCount < maxRetries)
+                        {
+                            retryCount++;
+                            foreach (var entry in _dbContext.ChangeTracker.Entries())
+                            {
+                                await entry.ReloadAsync();
+                            }
+                        }
+                        catch (DbUpdateException ex) when (retryCount < maxRetries && (ex.InnerException?.Message.Contains("Duplicate") == true || ex.InnerException?.Message.Contains("unique") == true))
+                        {
+                            retryCount++;
+                            _dbContext.ChangeTracker.Clear();
+                            // In this case we would ideally re-run the whole Picking logic
+                            // For now we re-throw to allow strategy.ExecuteAsync to retry if configured
+                            throw;
+                        }
                     }
 
                     await transaction.CommitAsync();
@@ -974,8 +995,32 @@ namespace Wms.Application.Services.Outbound
                     }
 
 
-                    await _dbContext.SaveChangesAsync();
-                    await tx.CommitAsync();
+                    int retryCount = 0;
+                    const int maxRetries = 2;
+
+                    while (true)
+                    {
+                        try
+                        {
+                            await _dbContext.SaveChangesAsync();
+                            await tx.CommitAsync();
+                            break;
+                        }
+                        catch (DbUpdateConcurrencyException) when (retryCount < maxRetries)
+                        {
+                            retryCount++;
+                            foreach (var entry in _dbContext.ChangeTracker.Entries())
+                            {
+                                await entry.ReloadAsync();
+                            }
+                        }
+                        catch (DbUpdateException ex) when (retryCount < maxRetries && (ex.InnerException?.Message.Contains("Duplicate") == true || ex.InnerException?.Message.Contains("unique") == true))
+                        {
+                            retryCount++;
+                            _dbContext.ChangeTracker.Clear();
+                            throw;
+                        }
+                    }
 
                     Console.WriteLine("✅ Transaction committed");
                 }

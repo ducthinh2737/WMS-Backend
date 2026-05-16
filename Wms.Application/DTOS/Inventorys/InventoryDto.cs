@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Text.Json.Serialization;
 using Wms.Domain.Entity.MasterData;
 using Wms.Domain.Enums.Inventory;
@@ -64,6 +64,8 @@ namespace Wms.Application.DTOs.Inventorys
         public Guid WarehouseId { get; set; }
         public Guid? LocationId { get; set; }
         public int ProductId { get; set; }
+        public Guid LotId { get; set; }
+        public string? LotCode { get; set; }
         public decimal QuantityChange { get; set; }
         public InventoryActionType ActionType { get; set; }
         public string? ReferenceCode { get; set; }

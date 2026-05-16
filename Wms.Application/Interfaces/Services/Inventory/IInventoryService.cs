@@ -1,4 +1,4 @@
-﻿using Wms.Application.DTOs.Inventorys;
+using Wms.Application.DTOs.Inventorys;
 using Wms.Application.DTOS.Warehouse;
 using Wms.Domain.Entity.MasterData;
 using Wms.Domain.Enums.Inventory;
@@ -53,18 +53,18 @@ namespace Wms.Application.Interfaces.Services.Inventory
             string? refCode = null,
             string? note = null
         );
-Task AdjustAsync(
-                           Guid warehouseId,
-                           Guid locationId,
-                           int productId,
-                           decimal qty,
-                           InventoryActionType actionType,
-                           Guid? lotId = null,
-                           string? refCode = null,
-                           string? lotCode = null,
-                           DateTime? expiryDate = null,
-                           DateTime? manufacturingDate = null,   // ← thêm param
-                           string? note = null);
+        Task AdjustAsync(
+            Guid warehouseId,
+            Guid locationId,
+            int productId,
+            decimal qty,
+            InventoryActionType actionType,
+            Guid? lotId = null,
+            string? refCode = null,
+            string? lotCode = null,
+            DateTime? expiryDate = null,
+            DateTime? manufacturingDate = null,
+            string? note = null);
 
         // =========================
         // LOCK / UNLOCK STOCK

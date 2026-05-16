@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Wms.Domain.Entity.Inventorys;
 using Wms.Domain.Entity.MasterData;
@@ -35,6 +35,10 @@ public class InventoryConfiguration : IEntityTypeConfiguration<Inventory>
         builder.Property(x => x.UpdatedAt)
                .HasColumnType("datetime")
                .IsRequired(false);
+
+        builder.Property(x => x.RowVersion)
+               .IsRowVersion()
+               .ValueGeneratedOnAddOrUpdate();
 
         // Tìm đoạn cấu hình Index cho Inventory và sửa thành:
         builder.HasIndex(i => new { i.WarehouseId, i.LocationId, i.ProductId, i.LotId })

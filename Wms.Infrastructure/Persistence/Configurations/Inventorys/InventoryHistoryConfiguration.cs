@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Wms.Domain.Entity.MasterData;
 using Wms.Domain.Entity.Warehouses;
@@ -29,7 +29,10 @@ public class InventoryHistoryConfiguration : IEntityTypeConfiguration<InventoryH
 
         builder.Property(x => x.CreatedAt)
             .HasColumnType("datetime")
-            .HasDefaultValueSql("CURRENT_TIMESTAMP"); // Sửa từ GETUTCDATE() sang CURRENT_TIMESTAMP
+            .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+        builder.Property(x => x.LotCode)
+            .HasMaxLength(50);
 
         // Index để query nhanh
         builder.HasIndex(x => x.ProductId);

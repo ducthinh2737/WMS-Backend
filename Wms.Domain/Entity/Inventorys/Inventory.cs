@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Wms.Domain.Entity.MasterData;
 
@@ -25,6 +25,8 @@ public class Inventory
     [NotMapped]
     public decimal AvailableQuantity
         => OnHandQuantity - LockedQuantity;
+
+    public DateTime RowVersion { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
