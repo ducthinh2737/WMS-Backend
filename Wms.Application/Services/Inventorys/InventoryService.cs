@@ -299,8 +299,10 @@ namespace Wms.Application.Services.Inventorys
             }
             else
             {
-                // Tìm theo LotCode, không có thì tạo mới
-                var lot = await _db.Lots.FirstOrDefaultAsync(x => x.productId == productId && x.Code == lotCode);
+                // Ưu tiên tìm trong tracker (Local) trước để tránh thêm trùng LotCode trong cùng transaction
+                var lot = _db.Lots.Local.FirstOrDefault(x => x.productId == productId && x.Code == lotCode)
+                          ?? await _db.Lots.FirstOrDefaultAsync(x => x.productId == productId && x.Code == lotCode);
+
                 if (lot == null)
                 {
                     lot = new Lot
@@ -353,7 +355,11 @@ switch (actionType)
 }
 
             // 3. CẬP NHẬT BẢNG INVENTORY
-            var inv = await _db.Inventories.FirstOrDefaultAsync(x =>
+            // Ưu tiên tìm trong tracker (Local) trước
+            var inv = _db.Inventories.Local.FirstOrDefault(x =>
+                x.WarehouseId == warehouseId && x.LocationId == locationId &&
+                x.ProductId == productId && x.LotId == finalLotId)
+                ?? await _db.Inventories.FirstOrDefaultAsync(x =>
                 x.WarehouseId == warehouseId && x.LocationId == locationId &&
                 x.ProductId == productId && x.LotId == finalLotId);
 
@@ -378,7 +384,7 @@ switch (actionType)
 
             inv.OnHandQuantity += signedQty;
             inv.UpdatedAt = DateTime.UtcNow;
-            _db.Inventories.Update(inv);
+            // _db.Inventories.Update(inv); // BỎ: redundant và gây lỗi concurrency với New Entity (Added -> Modified)
 
             // 4. GHI LỊCH SỬ
             _db.InventoryHistories.Add(new InventoryHistory
@@ -427,7 +433,7 @@ switch (actionType)
             }
 
             inventory.UpdatedAt = DateTime.UtcNow;
-            _db.Inventories.Update(inventory);
+            // _db.Inventories.Update(inventory);
         }
 
         public async Task AdjustAsync(
@@ -457,7 +463,7 @@ switch (actionType)
             }
 
             inventory.UpdatedAt = DateTime.UtcNow;
-            _db.Inventories.Update(inventory);
+            // _db.Inventories.Update(inventory);
         }
 
         public async Task<List<LocationStockDto>> GetAvailableLocationsByLot(

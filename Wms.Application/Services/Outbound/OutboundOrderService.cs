@@ -304,11 +304,7 @@ namespace Wms.Application.Services.Outbound
                 .FirstAsync(x => x.Id == giId);
 
             // 3️⃣ Validate nghiệp vụ
-            if (gi.Type == GIType.Production &&
-                gi.Warehouse.WarehouseType != WarehouseType.RawMaterial)
-            {
-                throw new Exception("Chỉ được xuất sản xuất từ kho nguyên liệu");
-            }
+   
 
             // 4️⃣ Allocate với xử lý hạn sử dụng
             foreach (var item in gi.Items)
