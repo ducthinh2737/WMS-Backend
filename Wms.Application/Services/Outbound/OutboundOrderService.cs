@@ -713,6 +713,9 @@ namespace Wms.Application.Services.Outbound
                         Console.WriteLine($"Entity state BEFORE update: {stateBefore}");
 
                         // ✅ Update allocation
+                        if (gia.PickedQty + actualPicked > gia.AllocatedQty)
+                            throw new Exception("Picked vượt allocation");
+
                         gia.PickedQty = actualPicked;
                         gia.Status = GIAStatus.Picked;
 
