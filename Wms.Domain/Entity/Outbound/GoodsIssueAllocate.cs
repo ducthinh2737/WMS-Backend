@@ -11,6 +11,8 @@ namespace Wms.Domain.Entity.Outbound
         public Guid LotId {  get; set; }
         public decimal AllocatedQty { get; set; }  
         public decimal PickedQty { get; set; } = 0;  
+        public decimal IssuedQty { get; set; } = 0;
+        public byte[] RowVersion { get; set; } = default!;
         public GIAStatus Status { get; set; } = GIAStatus.Planned;
 
         // Navigation

@@ -190,5 +190,6 @@ public class GoodsIssueAllocate1Dto
     public string LocationCode { get; set; } = null!;
     public decimal AllocatedQty { get; set; }
     public decimal PickedQty { get; set; }
+    public decimal IssuedQty { get; set; }
     public int Status { get; set; } // GIAStatus
 }

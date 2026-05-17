@@ -54,7 +54,7 @@ namespace Wms.Application.DTOs.Inventorys
 
         public decimal OnHandQty { get; set; }
         public decimal LockedQty { get; set; }
-        public decimal AvailableQty => OnHandQty - LockedQty;
+        public decimal AvailableQty { get; set; }
     }
 
 

@@ -71,11 +71,23 @@ namespace Wms.Application.Services.Inventorys
             return inventory;
         }
 
-        public async Task<List<LocationQtyDto>> GetAvailableLocations(int productId, Guid warehouseId)
+        public async Task<List<LocationQtyDto>> GetAvailableLocations(
+            int productId, Guid warehouseId)
         {
-            return await _db.Inventories
+            var pendingByLocation = await _db.GoodsIssueAllocates
+                .Where(a => a.GoodsIssueItem.ProductId == productId
+                         && a.LocationId != null
+                         && a.Status != Wms.Domain.Entity.Outbound.GIAStatus.Picked)
+                .GroupBy(a => a.LocationId)
+                .Select(g => new
+                {
+                    LocationId = g.Key,
+                    ReservedQty = g.Sum(a => a.AllocatedQty - a.PickedQty)
+                })
+                .ToListAsync();
+
+            var raw = await _db.Inventories
                 .Include(x => x.Lot)
-                .Include(x => x.Product)
                 .Where(inv => inv.WarehouseId == warehouseId
                     && inv.ProductId == productId
                     && (inv.OnHandQuantity - inv.LockedQuantity) > 0)
@@ -83,8 +95,10 @@ namespace Wms.Application.Services.Inventorys
                 {
                     Id = inv.LocationId ?? Guid.Empty,
                     WarehouseId = inv.WarehouseId,
-                    Type = _db.Locations.Where(l => l.Id == inv.LocationId).Select(l => l.Type).FirstOrDefault(),
-                    Code = _db.Locations.Where(l => l.Id == inv.LocationId).Select(l => l.Code).FirstOrDefault(),
+                    Type = _db.Locations.Where(l => l.Id == inv.LocationId)
+                              .Select(l => l.Type).FirstOrDefault(),
+                    Code = _db.Locations.Where(l => l.Id == inv.LocationId)
+                              .Select(l => l.Code).FirstOrDefault(),
                     AvailableQty = inv.OnHandQuantity - inv.LockedQuantity,
                     LotId = inv.LotId,
                     LotCode = inv.Lot.Code,
@@ -92,6 +106,15 @@ namespace Wms.Application.Services.Inventorys
                     ManufacturingDate = inv.Lot.ManufacturingDate
                 })
                 .ToListAsync();
+
+            foreach (var loc in raw)
+            {
+                var reserved = pendingByLocation
+                    .FirstOrDefault(p => p.LocationId == loc.Id)?.ReservedQty ?? 0;
+                loc.AvailableQty = Math.Max(0, loc.AvailableQty - reserved);
+            }
+
+            return raw.Where(x => x.AvailableQty > 0).ToList();
         }
 
         public async Task PutAway(PutawayDto dto)
@@ -368,24 +391,44 @@ await AdjustAsync(
         }
 
         public async Task<List<LocationStockDto>> GetAvailableLocationsByLot(
-            int productId,
-            Guid warehouseId,
-            Guid lotId)
+            int productId, Guid warehouseId, Guid lotId)
         {
-            return await _db.Inventories
-                .Where(x =>
-                    x.ProductId == productId &&
-                    x.WarehouseId == warehouseId &&
-                    x.LotId == lotId &&
-                    (x.OnHandQuantity - x.LockedQuantity) > 0
-                    && x.LocationId != null)
+            var pendingByLocation = await _db.GoodsIssueAllocates
+                .Where(a => a.GoodsIssueItem.ProductId == productId
+                         && a.LocationId != null
+                         && a.LotId == lotId
+                         && a.Status != Wms.Domain.Entity.Outbound.GIAStatus.Picked)
+                .GroupBy(a => a.LocationId)
+                .Select(g => new
+                {
+                    LocationId = g.Key,
+                    ReservedQty = g.Sum(a => a.AllocatedQty - a.PickedQty)
+                })
+                .ToListAsync();
+
+            var raw = await _db.Inventories
+                .Where(x => x.ProductId == productId
+                         && x.WarehouseId == warehouseId
+                         && x.LotId == lotId
+                         && (x.OnHandQuantity - x.LockedQuantity) > 0
+                         && x.LocationId != null)
                 .Select(x => new LocationStockDto
                 {
                     Id = x.LocationId!.Value,
                     OnHandQty = x.OnHandQuantity,
                     LockedQty = x.LockedQuantity,
+                    AvailableQty = x.OnHandQuantity - x.LockedQuantity
                 })
                 .ToListAsync();
+
+            foreach (var loc in raw)
+            {
+                var reserved = pendingByLocation
+                    .FirstOrDefault(p => p.LocationId == loc.Id)?.ReservedQty ?? 0;
+                loc.AvailableQty = Math.Max(0, loc.OnHandQty - loc.LockedQty - reserved);
+            }
+
+            return raw.Where(x => x.AvailableQty > 0).ToList();
         }
 
         // =========================

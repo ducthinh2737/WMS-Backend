@@ -28,7 +28,8 @@ namespace Wms.Domain.Entity.Outbound
         Picking = 5,
 
         OutOfStock = 6,        // Hết hàng
-        InsufficientStock = 7  // Không đủ hàng
+        InsufficientStock = 7, // Không đủ hàng
+        Picked = 8
     }
     public enum GIType
     {
