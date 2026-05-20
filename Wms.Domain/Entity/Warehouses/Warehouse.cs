@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -15,12 +15,12 @@ namespace Wms.Domain.Entity.Warehouses
         public Guid Id { get; set; } = Guid.NewGuid();
 
         [Required, MaxLength(100)]
-        public string Code { get; set; }
+        public string Code { get; set; } = string.Empty;
 
         [Required, MaxLength(200)]
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
-        public string Address { get; set; }
+        public string Address { get; set; } = string.Empty;
 
         public WarehouseStatus Status { get; set; } = WarehouseStatus.Active;
 

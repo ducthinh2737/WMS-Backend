@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using Xunit;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -290,6 +290,108 @@ namespace Wms.Tests.Services.MasterData
             await Assert.ThrowsAsync<Exception>(
                 async () => await _productService.CreateAsync(dto)
             );
+        }
+
+        [Fact]
+        public async Task UpdateAsync_ValidData_UpdatesOnlyEditableFieldsAndPreservesImmutableFields()
+        {
+            // Arrange
+            var creationTime = DateTime.UtcNow.AddDays(-1);
+            var product = new Product
+            {
+                Code = "PROD_ORIGINAL",
+                Name = "Original Product",
+                Description = "Original Desc",
+                CategoryId = 1,
+                UnitId = 1,
+                BrandId = 1,
+                SupplierId = 1,
+                Type = ProductType.Material,
+                IsActive = true,
+                CreatedAt = creationTime
+            };
+            _context.Products.Add(product);
+            await _context.SaveChangesAsync();
+
+            var dto = new UpdateProductDto
+            {
+                Code = "PROD_CHANGED_BUT_SHOULD_BE_IGNORED",
+                Name = "New Name",
+                Description = "New Desc",
+                CategoryId = 2,
+                UnitId = 2,
+                BrandId = 2,
+                SupplierId = 2,
+                Type = ProductType.Production,
+                IsActive = false
+            };
+
+            // Act
+            var result = await _productService.UpdateAsync(product.Id, dto);
+
+            // Assert
+            result.Should().NotBeNull();
+            result.Id.Should().Be(product.Id);
+            result.Code.Should().Be("PROD_ORIGINAL"); // Code preserved
+            result.Name.Should().Be("New Name");
+            result.Description.Should().Be("New Desc");
+            result.CategoryId.Should().Be(2);
+            result.UnitId.Should().Be(2);
+            result.BrandId.Should().Be(2);
+            result.SupplierId.Should().Be(2);
+            result.Type.Should().Be(ProductType.Material); // Type preserved / immutable
+            result.IsActive.Should().BeFalse();
+            result.CreateAt.Should().Be(creationTime); // CreatedAt preserved
+
+            var dbEntity = await _context.Products.FindAsync(product.Id);
+            dbEntity!.Code.Should().Be("PROD_ORIGINAL");
+            dbEntity.CreatedAt.Should().Be(creationTime);
+            dbEntity.UpdatedAt.Should().NotBeNull();
+            dbEntity.UpdatedAt.Value.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+        }
+
+        [Fact]
+        public async Task UpdateAsync_IsActiveOmitted_DoesNotDeactivateProduct()
+        {
+            // Arrange
+            var product = new Product
+            {
+                Code = "PROD01",
+                Name = "Product 1",
+                IsActive = true
+            };
+            _context.Products.Add(product);
+            await _context.SaveChangesAsync();
+
+            var dto = new UpdateProductDto
+            {
+                Code = "PROD01",
+                Name = "Updated Product Name",
+                IsActive = null // Omitted/null
+            };
+
+            // Act
+            var result = await _productService.UpdateAsync(product.Id, dto);
+
+            // Assert
+            result.IsActive.Should().BeTrue(); // Should preserve existing true state
+            var dbEntity = await _context.Products.FindAsync(product.Id);
+            dbEntity!.IsActive.Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task UpdateAsync_ProductNotFound_ThrowsException()
+        {
+            // Arrange
+            var dto = new UpdateProductDto
+            {
+                Name = "Non existent"
+            };
+
+            // Act & Assert
+            await Assert.ThrowsAsync<Exception>(
+                async () => await _productService.UpdateAsync(999, dto)
+            ).ContinueWith(t => t.Result.Message.Should().Be("Product not found"));
         }
 
         [Fact]

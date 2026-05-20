@@ -11,6 +11,7 @@ using Wms.Domain.Entity.Warehouses;
 using Wms.Domain.Enums.Inventory;
 using Wms.Domain.Enums.Inbound;
 using Wms.Infrastructure.Persistence.Context;
+using Wms.Application.Interfaces.Services.MasterData;
 
 namespace Wms.Application.Services.Inbound;
 
@@ -20,13 +21,15 @@ public class InboundService : IInboundService
     private readonly IInventoryService _inventoryService;
     private readonly IJwtService _jwt;
     private readonly IWarehouseService _locationService;
+    private readonly IProductUomService _productUomService;
 
-    public InboundService(AppDbContext db, IInventoryService inventoryService, IJwtService jwt, IWarehouseService warehouseService)
+    public InboundService(AppDbContext db, IInventoryService inventoryService, IJwtService jwt, IWarehouseService warehouseService, IProductUomService productUomService)
     {
         _db = db;
         _locationService = warehouseService;
         _jwt = jwt;
         _inventoryService = inventoryService;
+        _productUomService = productUomService;
     }
 
 
@@ -102,33 +105,44 @@ public class InboundService : IInboundService
                 );
         }
 
-        var order = new InboundOrder
+        var orderItems = new List<InboundOrderItem>();
+        foreach(var i in dto.Items)
         {
-            Id = Guid.NewGuid(),
-            Code = GenerateInboundOrderCode(),   // ← tự sinh
-            SupplierId = dto.SupplierId,
-            CreateBy = _jwt.GetUserId(),
-            Status = "Pending",
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            Items = dto.Items.Select(i => new InboundOrderItem
+            var baseQty = await _productUomService.ConvertToBaseQuantityAsync(i.ProductId, i.UnitId, i.Quantity);
+            orderItems.Add(new InboundOrderItem
             {
                 Id = Guid.NewGuid(),
                 ProductId = i.ProductId,
                 WarehouseId = i.WarehouseId,
                 Quantity = i.Quantity,
+                UnitId = i.UnitId,
+                BaseQuantity = baseQty,
                 Status = InboundItemStatus.Pending,
                 Received_qty = 0,
                 Price = i.Price,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
-            }).ToList()
+            });
+        }
+
+        var order = new InboundOrder
+        {
+            Id = Guid.NewGuid(),
+            Code = GenerateInboundOrderCode(),
+            SupplierId = dto.SupplierId,
+            CreateBy = _jwt.GetUserId(),
+            Status = "Pending",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Items = orderItems
         };
 
         _db.Set<InboundOrder>().Add(order);
         await _db.SaveChangesAsync();
 
-        return MapInboundOrderToDto(order);
+        var result = MapInboundOrderToDto(order);
+        await PopulateUnitNamesAsync(result);
+        return result;
     }
 
 
@@ -185,6 +199,8 @@ public class InboundService : IInboundService
                     ProductId = item.ProductId,
                     GoodsReceiptId = gr.Id,
                     Quantity = item.Quantity,
+                    UnitId = item.UnitId,
+                    BaseQuantity = item.BaseQuantity,
                     InboundOrderItemId = item.Id,
                     Received_Qty = 0,
                     CreatedAt = DateTime.UtcNow
@@ -197,7 +213,9 @@ public class InboundService : IInboundService
 
         await _db.SaveChangesAsync();
 
-        return MapInboundOrderToDto(order);
+        var result = MapInboundOrderToDto(order);
+        await PopulateUnitNamesAsync(result);
+        return result;
     }
 
 
@@ -225,7 +243,9 @@ public class InboundService : IInboundService
         }
 
         await _db.SaveChangesAsync();
-        return MapInboundOrderToDto(order);
+        var result = MapInboundOrderToDto(order);
+        await PopulateUnitNamesAsync(result);
+        return result;
     }
 
 
@@ -237,7 +257,9 @@ public class InboundService : IInboundService
 
         if (order == null) throw new NotFoundException("Order not found");
 
-        return MapInboundOrderToDto(order);
+        var result = MapInboundOrderToDto(order);
+        await PopulateUnitNamesAsync(result);
+        return result;
     }
 
     // Không paging
@@ -260,7 +282,12 @@ public class InboundService : IInboundService
                               .Take(pageSize)
                               .ToListAsync();
 
-        return orders.Select(MapInboundOrderToDto).ToList();
+        var resultList = orders.Select(MapInboundOrderToDto).ToList();
+        foreach (var r in resultList)
+        {
+            await PopulateUnitNamesAsync(r);
+        }
+        return resultList;
     }
 
 
@@ -279,6 +306,24 @@ public class InboundService : IInboundService
         {
             await using var transaction = await _db.Database.BeginTransactionAsync();
 
+            var productions = new List<ProductionReceiptItem>();
+            foreach(var i in dto.ProductionReceiptItems)
+            {
+                var baseQty = await _productUomService.ConvertToBaseQuantityAsync(i.ProductId, i.UnitId, i.Quantity);
+                productions.Add(new ProductionReceiptItem
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = i.ProductId,
+                    Quantity = i.Quantity,
+                    UnitId = i.UnitId,
+                    BaseQuantity = baseQty,
+                    Receipt_Qty = i.Receipt_Qty,
+                    Status = GRIStatus.Pending,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+
             var gr = new GoodsReceipt
             {
                 Id = Guid.NewGuid(),
@@ -288,23 +333,16 @@ public class InboundService : IInboundService
                 WarehouseId = dto.WarehouseId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
-                Productions = dto.ProductionReceiptItems.Select(i => new ProductionReceiptItem
-                {
-                    Id = Guid.NewGuid(),
-                    ProductId = i.ProductId,
-                    Quantity = i.Quantity,
-                    Receipt_Qty = i.Receipt_Qty,
-                    Status = GRIStatus.Pending,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                }).ToList()
+                Productions = productions
             };
 
             _db.GoodsReceipts.Add(gr);
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            return MapProductionGRToDto(gr);
+            var result = MapProductionGRToDto(gr);
+            await PopulateUnitNamesAsync(result);
+            return result;
         });
     }
 
@@ -325,7 +363,9 @@ public class InboundService : IInboundService
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            return MapProductionGRToDto(gr);
+            var result = MapProductionGRToDto(gr);
+            await PopulateUnitNamesAsync(result);
+            return result;
         });
     }
 
@@ -386,16 +426,20 @@ public class InboundService : IInboundService
                             ? GRIStatus.Complete
                             : GRIStatus.Partial;
 
+                        var baseReceiptQty = await _productUomService.ConvertToBaseQuantityAsync(production.ProductId, production.UnitId, item.Receipt_Qty);
+
                         await _inventoryService.AdjustAsync(
                             dto.WarehouseId,
                             location,
                             item.ProductId,
-                            item.Receipt_Qty,
+                            baseReceiptQty,
                             InventoryActionType.Receive,
                             refCode: gr.Code,
                             lotCode: GenerateLotCode(item.ProductId, receivedAt),
                             expiryDate: item.ExpiryDate,
-                            manufacturingDate: item.ManufacturingDate
+                            manufacturingDate: item.ManufacturingDate,
+                            unitId: item.UnitId,
+                            originalQty: item.Receipt_Qty
                         );
                     }
 
@@ -426,7 +470,9 @@ public class InboundService : IInboundService
                 }
             }
 
-            return MapProductionGRToDto(gr);
+            var result = MapProductionGRToDto(gr);
+            await PopulateUnitNamesAsync(result);
+            return result;
         });
     }
 
@@ -484,16 +530,20 @@ public class InboundService : IInboundService
                     var locationId = await _locationService
                         .GetReceivingLocationId(orderItem.WarehouseId);
 
+                    var baseReceivedQty = await _productUomService.ConvertToBaseQuantityAsync(item.ProductId, item.UnitId, dto.Received_Qty);
+
                     await _inventoryService.AdjustAsync(
                         orderItem.WarehouseId,
                         locationId,
                         item.ProductId,
-                        dto.Received_Qty,
+                        baseReceivedQty,
                         InventoryActionType.Receive,
                         refCode: gr.Code,
                         lotCode: GenerateLotCode(item.ProductId, DateTime.UtcNow),
                         expiryDate: dto.ExpiryDate,
-                        manufacturingDate: dto.ManufacturingDate
+                        manufacturingDate: dto.ManufacturingDate,
+                        unitId: dto.UnitId,
+                        originalQty: dto.Received_Qty
                     );
                 }
 
@@ -575,7 +625,9 @@ public class InboundService : IInboundService
             .Take(pageSize)
             .ToListAsync();
 
-        return grs.Select(MapGRToDto).ToList();
+        var resultList = grs.Select(MapGRToDto).ToList();
+        await PopulateUnitNamesAsync(resultList);
+        return resultList;
     }
 
 
@@ -638,6 +690,9 @@ public class InboundService : IInboundService
             Status = i.Status,
             Quantity = i.Quantity,
             Price = i.Price,
+            UnitId = i.UnitId,
+            BaseQuantity = i.BaseQuantity,
+            WarehouseId = i.WarehouseId,
             CreatedAt = i.CreatedAt,
             UpdatedAt = i.UpdatedAt
         }).ToList()
@@ -673,6 +728,8 @@ public class InboundService : IInboundService
             ProductId = p.ProductId,
             Quantity = p.Quantity,
             Receipt_Qty = p.Receipt_Qty,
+            UnitId = p.UnitId,
+            BaseQuantity = p.BaseQuantity,
             Status = p.Status,
             CreatedAt = p.CreatedAt,
             UpdatedAt = p.UpdatedAt
@@ -702,10 +759,15 @@ public class InboundService : IInboundService
                      && x.Status != InboundStatus.Complete)
             .ToListAsync();
 
+        var inboundDto = MapInboundOrderToDto(order);
+        await PopulateUnitNamesAsync(inboundDto);
+        var grDtos = existingGRs.Select(MapInboundGRToDto).ToList();
+        await PopulateUnitNamesAsync(grDtos);
+
         return new ScanReceiveResultDto
         {
-            InboundOrder = MapInboundOrderToDto(order),
-            GoodsReceipts = existingGRs.Select(MapInboundGRToDto).ToList(),
+            InboundOrder = inboundDto,
+            GoodsReceipts = grDtos,
             NeedsApproval = order.Status == "Pending"
         };
     }
@@ -765,6 +827,8 @@ public class InboundService : IInboundService
                         Id = Guid.NewGuid(),
                         ProductId = item.ProductId,
                         Quantity = item.Quantity,
+                        UnitId = item.UnitId,
+                        BaseQuantity = item.BaseQuantity,
                         InboundOrderItemId = item.Id,
                         Received_Qty = 0,
                         CreatedAt = DateTime.UtcNow
@@ -787,10 +851,15 @@ public class InboundService : IInboundService
         if (!activeGRs.Any())
             throw new BusinessException("ALL_GR_COMPLETED", "Tất cả phiếu nhập đã hoàn thành");
 
+        var inboundDto = MapInboundOrderToDto(order);
+        await PopulateUnitNamesAsync(inboundDto);
+        var grDtos = activeGRs.Select(MapInboundGRToDto).ToList();
+        await PopulateUnitNamesAsync(grDtos);
+
         return new ScanReceiveResultDto
         {
-            InboundOrder = MapInboundOrderToDto(order),
-            GoodsReceipts = activeGRs.Select(MapInboundGRToDto).ToList(),
+            InboundOrder = inboundDto,
+            GoodsReceipts = grDtos,
             NeedsApproval = false
         };
     }
@@ -839,6 +908,8 @@ public class InboundService : IInboundService
                 ProductId = i.ProductId,
                 Quantity = i.Quantity,
                 Received_Qty = i.Received_Qty,
+                UnitId = i.UnitId,
+                BaseQuantity = i.BaseQuantity,
                 Status = i.Status,
                 CreatedAt = i.CreatedAt,
                 UpdatedAt = i.UpdatedAt
@@ -933,10 +1004,15 @@ public class InboundService : IInboundService
                 await _db.SaveChangesAsync();
                 await transaction.CommitAsync();
 
+                var inboundDto = MapInboundOrderToDto(order);
+                await PopulateUnitNamesAsync(inboundDto);
+                var grDtos = createdGRs.Select(MapInboundGRToDto).ToList();
+                await PopulateUnitNamesAsync(grDtos);
+
                 return new ScanReceiveResultDto
                 {
-                    InboundOrder = MapInboundOrderToDto(order),
-                    GoodsReceipts = createdGRs.Select(MapInboundGRToDto).ToList(),
+                    InboundOrder = inboundDto,
+                    GoodsReceipts = grDtos,
                     NeedsApproval = false
                 };
             }
@@ -948,5 +1024,64 @@ public class InboundService : IInboundService
         });
     }
 
+    private async Task PopulateUnitNamesAsync(InboundOrderDto dto)
+    {
+        if (dto == null) return;
+        var unitNames = await _db.Units.ToDictionaryAsync(u => u.Id, u => u.Name);
+        if (dto.Items != null)
+        {
+            foreach (var item in dto.Items)
+            {
+                if (unitNames.TryGetValue(item.UnitId, out var name))
+                    item.UnitName = name;
+            }
+        }
+    }
 
+    private async Task PopulateUnitNamesAsync(GoodsReceiptDto dto)
+    {
+        if (dto == null) return;
+        var unitNames = await _db.Units.ToDictionaryAsync(u => u.Id, u => u.Name);
+        if (dto.Items != null)
+        {
+            foreach (var item in dto.Items)
+            {
+                if (unitNames.TryGetValue(item.UnitId, out var name))
+                    item.UnitName = name;
+            }
+        }
+        if (dto.ProductionReceiptItems != null)
+        {
+            foreach (var item in dto.ProductionReceiptItems)
+            {
+                if (unitNames.TryGetValue(item.UnitId, out var name))
+                    item.UnitName = name;
+            }
+        }
+    }
+
+    private async Task PopulateUnitNamesAsync(List<GoodsReceiptDto> dtos)
+    {
+        if (dtos == null || !dtos.Any()) return;
+        var unitNames = await _db.Units.ToDictionaryAsync(u => u.Id, u => u.Name);
+        foreach (var dto in dtos)
+        {
+            if (dto.Items != null)
+            {
+                foreach (var item in dto.Items)
+                {
+                    if (unitNames.TryGetValue(item.UnitId, out var name))
+                        item.UnitName = name;
+                }
+            }
+            if (dto.ProductionReceiptItems != null)
+            {
+                foreach (var item in dto.ProductionReceiptItems)
+                {
+                    if (unitNames.TryGetValue(item.UnitId, out var name))
+                        item.UnitName = name;
+                }
+            }
+        }
+    }
 }

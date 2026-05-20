@@ -237,6 +237,9 @@ public class InboundController : ControllerBase
                 Quantity = p.Quantity,
                 Receipt_Qty = p.Receipt_Qty,
                 Status = p.Status,
+                UnitId = p.UnitId,
+                ExpiryDate = p.ExpiryDate,
+                ManufacturingDate = p.ManufacturingDate,
                 CreatedAt = p.CreatedAt,
                 UpdatedAt = p.UpdatedAt
             }).ToList()

@@ -3,7 +3,7 @@ using Wms.Domain.Entity.Warehouses;
 
 namespace Wms.Domain.Entity.Outbound
 {
-    public class GoodsIssueItem
+    public class GoodsIssueItem : IVersionedEntity
     {
         public Guid Id { get; set; } = Guid.NewGuid();
         public Guid GoodsIssueId { get; set; }
@@ -18,10 +18,13 @@ namespace Wms.Domain.Entity.Outbound
         public Guid? LocationId { get; set; }
         public Location Location { get; set; }
 
-        public int Quantity { get; set; }
-        public int Issued_Qty { get; set; } = 0;
+        public decimal Quantity { get; set; }
+        public decimal Issued_Qty { get; set; } = 0;
+        public int UnitId { get; set; }
+        public decimal BaseQuantity { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+        public long Version { get; set; } = 1;
         public ICollection<GoodsIssueAllocate> Allocations { get; set; } = new List<GoodsIssueAllocate>();
 
     }

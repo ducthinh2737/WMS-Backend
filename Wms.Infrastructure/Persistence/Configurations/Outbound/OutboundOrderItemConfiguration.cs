@@ -21,6 +21,9 @@ namespace Wms.Infrastructure.Persistence.Configurations.Outbound
                    .WithMany()
                    .HasForeignKey(x => x.ProductId)
                    .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Property(x => x.Version)
+                   .IsConcurrencyToken();
         }
     }
 }

@@ -123,6 +123,14 @@ public class InventoryController : ControllerBase
         return Ok(list);
     }
 
+    [HttpGet("history/recent")]
+    // [HasPermission("inventory.history")] // Optional permission if needed
+    public async Task<IActionResult> RecentHistory([FromQuery] int limit = 50)
+    {
+        var list = await _service.GetRecentGlobalHistoryAsync(limit);
+        return Ok(list);
+    }
+
     // =========================
     // ADJUST INVENTORY (Receive / Issue / Transfer / Adjust)
     // =========================

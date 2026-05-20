@@ -1,4 +1,4 @@
-﻿
+
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -215,7 +215,7 @@ namespace Wms.Application.Services.Warehouses
                 WarehouseId = dto.WarehouseId,
                 Type = dto.Type,
                 Code = dto.Code.Trim().ToUpperInvariant(),
-                Description = dto.Description
+                Description = dto.Description ?? ""
             };
 
 

@@ -36,9 +36,8 @@ public class InventoryConfiguration : IEntityTypeConfiguration<Inventory>
                .HasColumnType("datetime")
                .IsRequired(false);
 
-        builder.Property(x => x.RowVersion)
-               .IsRowVersion()
-               .ValueGeneratedOnAddOrUpdate();
+        builder.Property(x => x.Version)
+               .IsConcurrencyToken();
 
         // Tìm đoạn cấu hình Index cho Inventory và sửa thành:
         builder.HasIndex(i => new { i.WarehouseId, i.LocationId, i.ProductId, i.LotId })
@@ -49,6 +48,8 @@ public class InventoryConfiguration : IEntityTypeConfiguration<Inventory>
         builder.HasIndex(x => x.ProductId);
         builder.HasIndex(x => x.WarehouseId);
         builder.HasIndex(x => x.LocationId);
+        builder.HasIndex(x => new { x.ProductId, x.LocationId, x.LotId })
+               .HasDatabaseName("IX_Inventories_ProductId_LocationId_LotId");
 
         // Quan hệ
         builder.HasOne<Warehouse>()

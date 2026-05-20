@@ -1,4 +1,4 @@
-﻿using Wms.Domain.Entity.MasterData;
+using Wms.Domain.Entity.MasterData;
 
 namespace Wms.Application.DTOs.MasterData.Products;
 
@@ -12,5 +12,5 @@ public class UpdateProductDto
     public int UnitId { get; set; }
     public int BrandId { get; set; }
     public int SupplierId { get; set; }
-    public bool IsActive { get; set; }  
+    public bool? IsActive { get; set; }  
 }

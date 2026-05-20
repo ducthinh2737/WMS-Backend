@@ -2,7 +2,7 @@ using Wms.Domain.Entity.Warehouses;
 
 namespace Wms.Domain.Entity.Outbound
 {
-    public class GoodsIssue
+    public class GoodsIssue : IVersionedEntity
     {
         public Guid Id { get; set; } = Guid.NewGuid();
         public Guid? OutboundOrderId { get; set; }
@@ -11,10 +11,16 @@ namespace Wms.Domain.Entity.Outbound
         public string Code { get; set; } = null!;
         public Guid WarehouseId { get; set; }
         public Warehouse Warehouse { get; set; } = null!; 
+
+        public int? CustomerId { get; set; }
+        public Wms.Domain.Entity.MasterData.Customer? Customer { get; set; }
+        public string? Address { get; set; }
+
         public GIStatus Status { get; set; }
         public DateTime IssuedAt { get; set; } = DateTime.UtcNow; // EF sẽ tự điền giá trị
         public DateTime CreateAt { get; set; }
         public DateTime? UpdateAt { get; set; }
+        public long Version { get; set; } = 1;
 
         public ICollection<GoodsIssueItem> Items { get; set; } = new List<GoodsIssueItem>();
     }

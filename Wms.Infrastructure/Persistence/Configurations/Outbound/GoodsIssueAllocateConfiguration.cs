@@ -8,8 +8,8 @@ namespace Wms.Infrastructure.Persistence.Configurations.Outbound
     {
         public void Configure(EntityTypeBuilder<GoodsIssueAllocate> builder)
         {
-            builder.Property(x => x.RowVersion)
-                   .IsRowVersion();
+            builder.Property(x => x.Version)
+                   .IsConcurrencyToken();
                    
             builder.Property(x => x.IssuedQty)
                    .HasColumnType("decimal(18,4)")

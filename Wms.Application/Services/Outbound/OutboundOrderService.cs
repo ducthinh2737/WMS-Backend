@@ -1,5 +1,7 @@
 using AutoMapper;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Wms.Application.DTOS.Outbound;
 using Wms.Application.Exceptions;
 using Wms.Application.Interfaces.Services;
@@ -11,32 +13,49 @@ using Wms.Domain.Entity.MasterData;
 using Wms.Domain.Entity.Warehouses;
 using Wms.Domain.Enums.Inventory;
 using Wms.Infrastructure.Persistence.Context;
+using Wms.Application.Interfaces.Services.MasterData;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Wms.Application.Services.Outbound
 {
     public class OutboundOrderService : IOutboundOrderService
-
     {
         private readonly AppDbContext _dbContext;
         private readonly IInventoryService _inventoryService;
+        private readonly IGoodsIssueService _goodsIssueService;
+        private readonly IAllocationService _allocationService;
         private readonly IJwtService jwtService;
         private readonly IMapper _mapper;
         private readonly IWarehouseService _warehouse;
+        private readonly IProductUomService _productUomService;
+        private readonly ILogger<OutboundOrderService> _logger;
 
-        public OutboundOrderService(AppDbContext dbContext, IMapper mapper, IInventoryService _inventory, IJwtService jwt, IWarehouseService warehouse)
+        public OutboundOrderService(
+            AppDbContext dbContext,
+            IMapper mapper,
+            IInventoryService _inventory,
+            IGoodsIssueService goodsIssueService,
+            IAllocationService allocationService,
+            IJwtService jwt,
+            IWarehouseService warehouse,
+            IProductUomService productUomService,
+            ILogger<OutboundOrderService>? logger = null)
         {
             _inventoryService = _inventory;
+            _goodsIssueService = goodsIssueService;
+            _allocationService = allocationService;
             _dbContext = dbContext;
             _warehouse = warehouse;
             jwtService = jwt;
             _mapper = mapper;
+            _productUomService = productUomService;
+            _logger = logger ?? NullLogger<OutboundOrderService>.Instance;
         }
 
-
         #region Create / Update / Get
-
-
-       
 
         public async Task<OutboundOrderDto> CreateOutboundOrderAsync(OutboundOrderDto dto)
         {
@@ -58,14 +77,11 @@ namespace Wms.Application.Services.Outbound
                     );
             }
 
-            var order = new OutboundOrder
+            var orderItems = new List<OutboundOrderItem>();
+            foreach (var i in dto.Items)
             {
-                Id = Guid.NewGuid(),
-                Code = GenerateOutboundOrderCode(),
-                CustomerId = dto.CustomerId,
-                Status = OutboundStatus.Pending,
-                CreatedAt = DateTime.UtcNow,
-                Items = dto.Items.Select(i => new OutboundOrderItem
+                var baseQty = await _productUomService.ConvertToBaseQuantityAsync(i.ProductId, i.UnitId, i.OrderQty);
+                orderItems.Add(new OutboundOrderItem
                 {
                     Id = Guid.NewGuid(),
                     ProductId = i.ProductId,
@@ -73,10 +89,22 @@ namespace Wms.Application.Services.Outbound
                     Status = OutboundStatus.Pending,
                     WarehouseId = i.WarehouseId,
                     Quantity = i.OrderQty,
+                    UnitId = i.UnitId,
+                    BaseQuantity = baseQty,
                     Issued_Qty = 0,
                     Price = i.Price,
                     CreatedAt = DateTime.UtcNow
-                }).ToList()
+                });
+            }
+
+            var order = new OutboundOrder
+            {
+                Id = Guid.NewGuid(),
+                Code = GenerateOutboundOrderCode(),
+                CustomerId = dto.CustomerId,
+                Status = OutboundStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                Items = orderItems
             };
 
             if (jwtService.GetUserId().HasValue)
@@ -99,16 +127,14 @@ namespace Wms.Application.Services.Outbound
                 }
             }
 
-            // Reload để đảm bảo Items được load đầy đủ
             var savedOrder = await _dbContext.OutboundOrders
                 .Include(x => x.Items)
                 .FirstOrDefaultAsync(x => x.Id == order.Id);
 
-            return _mapper.Map<OutboundOrderDto>(savedOrder ?? order);
+            var result = _mapper.Map<OutboundOrderDto>(savedOrder ?? order);
+            await PopulateUnitNamesAsync(result);
+            return result;
         }
-
-
-
 
         public async Task<OutboundOrderDto> GetOutboundOrderAsync(Guid orderId)
         {
@@ -122,61 +148,16 @@ namespace Wms.Application.Services.Outbound
                 .FirstOrDefaultAsync(x => x.Id == orderId);
 
             if (entity == null)
-                throw new Exception("OutboundOrder not found");
+                throw new BusinessException("ORDER_NOT_FOUND", "OutboundOrder not found");
 
-            return _mapper.Map<OutboundOrderDto>(entity);
+            var result = _mapper.Map<OutboundOrderDto>(entity);
+            await PopulateUnitNamesAsync(result);
+            return result;
         }
-
 
         public async Task<GoodsIssueDetailDto?> GetGoodsIssueDetailAsync(Guid goodsIssueId)
         {
-            var gi = await _dbContext.Set<GoodsIssue>()
-                .Where(g => g.Id == goodsIssueId)
-                .Include(g => g.OutboundOrder)
-                .Include(g => g.Warehouse)
-                .Include(g => g.Items)
-                    .ThenInclude(i => i.Product)
-                .Include(g => g.Items)
-                    .ThenInclude(i => i.Allocations)
-                        .ThenInclude(a => a.Location)
-                .Select(g => new GoodsIssueDetailDto
-                {
-                    Id = g.Id,
-                    Code = g.Code,
-                    OutboundOrderCode = g.OutboundOrder.Code,
-
-                    Type = g.Type,
-                    WarehouseName = g.Warehouse.Name,
-                    Status = (int)g.Status,
-                    Items = g.Items.Select(i => new GoodsIssueItemDtoForFrontend
-                    {
-                        Id = i.Id,
-                        ProductId = i.ProductId,
-                        ProductCode = i.Product.Code,
-                        ProductName = i.Product.Name,
-                        Quantity = i.Quantity,
-                        PickedQty = i.Allocations.Sum(a => a.PickedQty),
-                        IssuedQty = i.Issued_Qty,
-                        Status = (int)i.Status,
-                        Allocations = i.Allocations.Select(a => new GoodsIssueAllocate1Dto
-                        {
-                            Id = a.Id,
-                            // ✅ QUAN TRỌNG: Bạn phải gán LocationId ở đây!
-                            LocationId = a.LocationId,
-
-                            // ✅ Lấy Code trực tiếp từ Object Location đã Include
-                            LocationCode = a.Location.Code ?? "Chưa xác định",
-
-                            AllocatedQty = a.AllocatedQty,
-                            PickedQty = a.PickedQty,
-                            IssuedQty = a.IssuedQty,
-                            Status = (int)a.Status
-                        }).ToList()
-                    }).ToList()
-                })
-                .FirstOrDefaultAsync();
-
-            return gi;
+            return await _goodsIssueService.GetGoodsIssueDetailAsync(goodsIssueId);
         }
 
         public async Task<List<OutboundOrderDto>> QueryOutboundOrdersAsync(OutboundOrderQueryDto dto)
@@ -207,265 +188,116 @@ namespace Wms.Application.Services.Outbound
                 .Take(dto.PageSize)
                 .ToListAsync();
 
-            return _mapper.Map<List<OutboundOrderDto>>(list);
+            var result = _mapper.Map<List<OutboundOrderDto>>(list);
+            await PopulateUnitNamesAsync(result);
+            return result;
         }
 
         public async Task<List<GoodsIssueDto>> QueryGoodsIssuesAsync(GoodsIssueQuery1Dto dto)
         {
-            var query = _dbContext.GoodsIssues
-                .Include(x => x.OutboundOrder)
-                .Include(x => x.Warehouse)
-                .Include(x => x.Items)
-                    .ThenInclude(i => i.Product)
-                .Include(x => x.Items)
-                    .ThenInclude(i => i.Allocations).ThenInclude(s => s.Location)
-                .AsNoTracking()
-                .AsQueryable();
-
-            if (!string.IsNullOrEmpty(dto.Code))
-                query = query.Where(x => x.Code.Contains(dto.Code));
-
-            if (dto.OutboundOrderId.HasValue)
-                query = query.Where(x => x.OutboundOrderId == dto.OutboundOrderId.Value);
-
-            if (dto.WarehouseId.HasValue)
-                query = query.Where(x => x.WarehouseId == dto.WarehouseId.Value);
-
-            if (dto.Status.HasValue)
-                query = query.Where(x => x.Status == (GIStatus)dto.Status.Value);
-
-            if (dto.IssuedFrom.HasValue)
-                query = query.Where(x => x.IssuedAt >= dto.IssuedFrom.Value);
-
-            if (dto.IssuedTo.HasValue)
-                query = query.Where(x => x.IssuedAt <= dto.IssuedTo.Value);
-
-            query = query.OrderByDescending(x => x.IssuedAt);
-
-            var entities = await query
-                .Skip((dto.PageIndex - 1) * dto.PageSize)
-                .Take(dto.PageSize)
-                .ToListAsync();
-
-            var resultList = _mapper.Map<List<GoodsIssueDto>>(entities);
-
-            for (int i = 0; i < entities.Count; i++)
-            {
-                resultList[i].IssuedAt = entities[i].IssuedAt;
-            }
-
-            return resultList;
+            return await _goodsIssueService.QueryGoodsIssuesAsync(dto);
         }
 
         #endregion
 
         #region Approve / Reject
 
-        public async Task<GoodsIssueDto> CreateProductionGIAsync(
-    ProductionGoodsIssueCreateDto dto)
+        public async Task<GoodsIssueDto> CreateProductionGIAsync(ProductionGoodsIssueCreateDto dto)
         {
-            var warehouse = await _dbContext.Warehouses
-                .FirstOrDefaultAsync(w => w.Id == dto.WarehouseId);
-
-            if (warehouse == null)
-                throw new Exception("Kho không tồn tại");
-
-
-            var gi = new GoodsIssue
-            {
-                Id = Guid.NewGuid(),
-                Code = GenerateGICode(),
-                Type = GIType.Production,
-                WarehouseId = dto.WarehouseId,
-                Status = GIStatus.Pending,
-                CreateAt = DateTime.UtcNow,
-                Items = dto.Items.Select(i => new GoodsIssueItem
-                {
-                    Id = Guid.NewGuid(),
-                    ProductId = i.ProductId,
-                    Quantity = i.Quantity,
-                    Issued_Qty = 0,
-                    Status = GIStatus.Pending,
-                    CreatedAt = DateTime.UtcNow
-                }).ToList()
-            };
-
-            _dbContext.GoodsIssues.Add(gi);
-            
-            int retryCount = 0;
-            while (true)
-            {
-                try
-                {
-                    await _dbContext.SaveChangesAsync();
-                    break;
-                }
-                catch (DbUpdateException ex) when (retryCount < 5 && (ex.InnerException?.Message.Contains("Duplicate") == true || ex.InnerException?.Message.Contains("unique") == true))
-                {
-                    retryCount++;
-                    gi.Code = GenerateGICode();
-                }
-            }
-
-            // ✅ MAP SANG DTO
-            return _mapper.Map<GoodsIssueDto>(gi);
+            return await _goodsIssueService.CreateProductionGIAsync(dto);
         }
-
 
         public async Task<GoodsIssueDto> ApproveGIAsync(Guid giId)
         {
-            // 1️⃣ Atomic approve
-            var affected = await _dbContext.GoodsIssues
-                .Where(x => x.Id == giId && x.Status == GIStatus.Pending)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(x => x.Status, GIStatus.Approve)
-                    .SetProperty(x => x.UpdateAt, DateTime.UtcNow)
-                );
-
-            if (affected == 0)
-                throw new Exception("GoodsIssue đã được approve hoặc không tồn tại");
-
-            // 2️⃣ Load lại GI
-            var gi = await _dbContext.GoodsIssues
-                .Include(x => x.Items)
-                .Include(x => x.Warehouse)
-                .FirstAsync(x => x.Id == giId);
-
-            // 3️⃣ Validate nghiệp vụ
-   
-
-            // 4️⃣ Allocate với xử lý hạn sử dụng
-            foreach (var item in gi.Items)
-            {
-                var existed = await _dbContext.GoodsIssueAllocates
-                    .AnyAsync(a => a.GoodsIssueItemId == item.Id);
-
-                if (existed)
-                    continue;
-
-                // Ensure allocations collection is initialized for the entity if we add directly to it later.
-                // Wait, item is tracked, we can just add to _dbContext.GoodsIssueAllocates inside the method or pass _dbContext
-                await AllocateInventoryAsync(item, gi.WarehouseId);
-            }
-
-            // 5️⃣ SaveChanges
-            await _dbContext.SaveChangesAsync();
-            return MapToDto(gi);
-        }
-
-        private static GoodsIssueDto MapToDto(GoodsIssue gi)
-        {
-            return new GoodsIssueDto
-            {
-                Id = gi.Id,
-                Code = gi.Code,
-                OutboundOrderId = gi.OutboundOrderId,
-                Type = gi.Type,
-                WarehouseId = gi.WarehouseId,
-                Status = gi.Status,
-                CreatedAt = gi.CreateAt,
-                UpdatedAt = gi.UpdateAt,
-                IssuedAt = gi.IssuedAt,
-
-                Items = gi.Items.Select(item => new GoodsIssueItemDto
-                {
-                    Id = item.Id,
-                    GoodsIssueId = item.GoodsIssueId,
-                    ProductId = item.ProductId,
-                    OutboundOrderItemId = item.OutboundOrderItemId,
-                    LocationId = item.LocationId,
-                    Quantity = item.Quantity,
-                    IssuedQty = item.Issued_Qty,
-                    Status = item.Status,
-                    CreatedAt = item.CreatedAt,
-                    UpdatedAt = item.UpdatedAt,
-
-                    Allocations = item.Allocations.Select(a => new GoodsIssueAllocateDto
-                    {
-                        Id = a.Id,
-                        GoodsIssueItemId = a.GoodsIssueItemId,
-                        LocationId = a.LocationId ?? Guid.Empty,
-                        AllocatedQty = a.AllocatedQty,
-                        PickedQty = a.PickedQty,
-                        Status = a.Status
-                    }).ToList()
-
-                }).ToList()
-            };
+            return await _goodsIssueService.ApproveGIAsync(giId);
         }
 
         public async Task<OutboundOrderDto> ApproveOutboundOrderAsync(Guid orderId)
         {
-            var entity = await _dbContext.OutboundOrders
-                .Include(x => x.Items)
-                .FirstOrDefaultAsync(x => x.Id == orderId);
-
-            if (entity == null)
-                throw new Exception("OutboundOrder not found");
-            if (entity.Status != OutboundStatus.Pending)
-                throw new Exception("Only Pending orders can be approved");
-
-            entity.Status = OutboundStatus.Approve;
-            entity.UpdatedAt = DateTime.UtcNow;
-            entity.ApproveBy = jwtService.GetUserId();
-            entity.ApprovedAt = DateTime.UtcNow;
-
-            foreach (var item in entity.Items.Where(x => x.Status == OutboundStatus.Pending))
+            var strategy = _dbContext.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                item.Status = OutboundStatus.Approve;
-                item.UpdatedAt = DateTime.UtcNow;
-            }
-
-            var GroupWarehouse = entity.Items
-                .Where(x => x.Status == OutboundStatus.Approve)
-                .GroupBy(x => x.WarehouseId);
-
-            foreach (var group in GroupWarehouse)
-            {
-                var warehouseId = group.Key;
-
-                var gi = new GoodsIssue
+                using var transaction = await _dbContext.Database.BeginTransactionAsync();
+                try
                 {
-                    Id = Guid.NewGuid(),
-                    OutboundOrderId = entity.Id,
-                    Code = GenerateGICode(),
-                    Type = GIType.Outbound,
-                    WarehouseId = warehouseId,
-                    Status = GIStatus.Pending,
-                    CreateAt = DateTime.UtcNow,
-                    Items = new List<GoodsIssueItem>()
-                };
+                    var entity = await _dbContext.OutboundOrders
+                        .Include(x => x.Items)
+                        .FirstOrDefaultAsync(x => x.Id == orderId);
 
-                foreach (var item in group)
-                {
-                    var gii = new GoodsIssueItem
+                    if (entity == null)
+                        throw new BusinessException("ORDER_NOT_FOUND", "OutboundOrder not found");
+                    if (entity.Status != OutboundStatus.Pending)
+                        throw new BusinessException("ORDER_NOT_PENDING", "Only Pending orders can be approved");
+
+                    entity.Status = OutboundStatus.Approve;
+                    entity.UpdatedAt = DateTime.UtcNow;
+                    entity.ApproveBy = jwtService.GetUserId();
+                    entity.ApprovedAt = DateTime.UtcNow;
+
+                    foreach (var item in entity.Items.Where(x => x.Status == OutboundStatus.Pending))
                     {
-                        Id = Guid.NewGuid(),
-                        GoodsIssueId = gi.Id,
-                        OutboundOrderItemId = item.Id,
-                        ProductId = item.ProductId,
-                        Status = GIStatus.Pending,
-                        Quantity = item.Quantity,
-                        Issued_Qty = item.Issued_Qty,
-                        CreatedAt = DateTime.UtcNow,
-                        Allocations = new List<GoodsIssueAllocate>()
-                    };
+                        item.Status = OutboundStatus.Approve;
+                        item.UpdatedAt = DateTime.UtcNow;
+                    }
 
-                    await AllocateInventoryAsync(gii, warehouseId);
-                    
-                    // The allocations are added directly to _dbContext in AllocateInventoryAsync.
-                    // But in ApproveOutboundOrderAsync, GoodsIssueItem is new.
-                    // Wait, if GoodsIssueItem is new, it must have an Id for its allocations.
-                    // We set gii.Id = Guid.NewGuid() above, so _dbContext.GoodsIssueAllocates.Add() works fine.
-                    // However, we also add gii to gi.Items. 
-                    gi.Items.Add(gii);
+                    var GroupWarehouse = entity.Items
+                        .Where(x => x.Status == OutboundStatus.Approve)
+                        .GroupBy(x => x.WarehouseId);
+
+                    foreach (var group in GroupWarehouse)
+                    {
+                        var warehouseId = group.Key;
+
+                        var gi = new GoodsIssue
+                        {
+                            Id = Guid.NewGuid(),
+                            OutboundOrderId = entity.Id,
+                            Code = GenerateGICode(),
+                            Type = GIType.Outbound,
+                            WarehouseId = warehouseId,
+                            Status = GIStatus.Pending,
+                            CreateAt = DateTime.UtcNow,
+                            Items = new List<GoodsIssueItem>()
+                        };
+
+                        foreach (var item in group)
+                        {
+                            var gii = new GoodsIssueItem
+                            {
+                                Id = Guid.NewGuid(),
+                                GoodsIssueId = gi.Id,
+                                OutboundOrderItemId = item.Id,
+                                ProductId = item.ProductId,
+                                Status = GIStatus.Pending,
+                                Quantity = item.Quantity,
+                                UnitId = item.UnitId,
+                                BaseQuantity = item.BaseQuantity,
+                                Issued_Qty = item.Issued_Qty,
+                                CreatedAt = DateTime.UtcNow,
+                                Allocations = new List<GoodsIssueAllocate>()
+                            };
+
+                            await _allocationService.AllocateInventoryAsync(gii, warehouseId);
+                            gi.Items.Add(gii);
+                        }
+
+                        _dbContext.Set<GoodsIssue>().Add(gi);
+                    }
+
+                    await _dbContext.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    var result = _mapper.Map<OutboundOrderDto>(entity);
+                    await PopulateUnitNamesAsync(result);
+                    return result;
                 }
-
-                _dbContext.Set<GoodsIssue>().Add(gi);
-            }
-
-            await _dbContext.SaveChangesAsync();
-            return _mapper.Map<OutboundOrderDto>(entity);
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    _logger.LogError(ex, "Error approving OutboundOrder {OrderId}: {Message}", orderId, ex.Message);
+                    throw;
+                }
+            });
         }
 
         public async Task Picking(GoodsIssueItemDto dto)
@@ -474,434 +306,442 @@ namespace Wms.Application.Services.Outbound
 
             await strategy.ExecuteAsync(async () =>
             {
-                using var transaction = await _dbContext.Database.BeginTransactionAsync();
+                int maxRetries = 3;
+                int delayMs = 100;
 
-                try
+                for (int retry = 1; retry <= maxRetries; retry++)
                 {
-                    Console.WriteLine($"=== START PICKING - DTO ProductId: {dto.ProductId} ===");
-
-                    var gii = await _dbContext.GoodsIssueItems
-                        .Include(x => x.Allocations)
-                        .FirstOrDefaultAsync(s => s.Id == dto.Id);
-                    if (gii == null)
-                        throw new Exception("gii null");
-
-                    var gi = await _dbContext.GoodsIssues
-                        .Include(s => s.Warehouse)
-                        .FirstOrDefaultAsync(s => s.Id == dto.GoodsIssueId);
-                    if (gi == null)
-                        throw new Exception("gi null");
-
-                    var issuedLocation = await _warehouse.GetIssuedLocationId(gi.WarehouseId);
-                    if (issuedLocation == null)
-                        throw new Exception("location null");
-
-                    Console.WriteLine($"IssuedLocation: {issuedLocation.Id}");
-
-                    var allocateIds = dto.Allocations.Select(x => x.Id).ToList();
-                    Console.WriteLine($"Looking for allocations: {string.Join(", ", allocateIds)}");
-
-                    var allAllocates = await _dbContext.GoodsIssueAllocates
-                        .Where(a => allocateIds.Contains(a.Id))
-                        .ToListAsync();
-
-                    Console.WriteLine($"Found {allAllocates.Count} allocations");
-
-                    foreach (var itemDto in dto.Allocations)
+                    using var transaction = await _dbContext.Database.BeginTransactionAsync(global::System.Data.IsolationLevel.ReadCommitted);
+                    try
                     {
-                        Console.WriteLine($"\n--- Processing allocation {itemDto.Id} ---");
+                        _logger.LogInformation("=== START PICKING (Attempt {Retry}) - ProductId: {ProductId} ===", retry, dto.ProductId);
 
-                        var gia = allAllocates.FirstOrDefault(a => a.Id == itemDto.Id);
-                        if (gia == null)
+                        var gii = await _dbContext.GoodsIssueItems
+                            .Include(x => x.Allocations)
+                            .FirstOrDefaultAsync(s => s.Id == dto.Id);
+                        if (gii == null)
+                            throw new BusinessException("GII_NOT_FOUND", "GoodsIssueItem not found");
+
+                        if (gii.Status == GIStatus.Complete)
+                            throw new BusinessException("ITEM_ALREADY_COMPLETE", "Dòng hàng đã hoàn thành, không thể pick thêm.");
+
+                        var gi = await _dbContext.GoodsIssues
+                            .Include(s => s.Warehouse)
+                            .FirstOrDefaultAsync(s => s.Id == dto.GoodsIssueId);
+                        if (gi == null)
+                            throw new BusinessException("GI_NOT_FOUND", "GoodsIssue not found");
+
+                        // FIX BUG 2: Cho phép pick khi GI đang ở trạng thái Approve, Picking, Partically_Issued, hoặc Picked.
+                        if (gi.Status != GIStatus.Approve && 
+                            gi.Status != GIStatus.Picking && 
+                            gi.Status != GIStatus.Partically_Issued && 
+                            gi.Status != GIStatus.Picked)
                         {
-                            Console.WriteLine($"❌ Allocation {itemDto.Id} not found!");
-                            continue;
+                            throw new BusinessException(
+                                "GI_NOT_APPROVED",
+                                $"Phiếu xuất không ở trạng thái hợp lệ để pick (hiện tại: {gi.Status})."
+                            );
                         }
 
-                        Console.WriteLine($"Current: PickedQty={gia.PickedQty}, Status={gia.Status}, LotId={gia.LotId}");
-                        Console.WriteLine($"New: PickedQty={itemDto.PickedQty}");
+                        var issuedLocation = await _warehouse.GetIssuedLocationId(gi.WarehouseId);
+                        if (issuedLocation == null)
+                            throw new BusinessException("ISSUED_LOCATION_NOT_CONFIGURED", "Kho chưa cấu hình vị trí xuất hàng (Issue Location)");
 
-                        decimal actualPicked = itemDto.PickedQty;
-
-                        // Check before update
-                        var stateBefore = _dbContext.Entry(gia).State;
-                        Console.WriteLine($"Entity state BEFORE update: {stateBefore}");
-
-                        // ✅ Update allocation
-                        if (gia.PickedQty + actualPicked > gia.AllocatedQty)
-                            throw new Exception("Picked vượt allocation");
-
-                        gia.PickedQty += actualPicked;
-                        gia.Status = (gia.PickedQty >= gia.AllocatedQty) ? GIAStatus.Picked : GIAStatus.Picking;
-
-                        var stateAfter = _dbContext.Entry(gia).State;
-                        Console.WriteLine($"Entity state AFTER update: {stateAfter}");
-
-                        // Check if LotId is valid
-                        if (gia.LotId == Guid.Empty || gia.LotId == null)
+                        // FIX BUG 3: Allocate inventory nếu chưa có (allocation xảy ra tại bước Pick)
+                        var hasAllocations = gii.Allocations != null && gii.Allocations.Any();
+                        if (!hasAllocations)
                         {
-                            Console.WriteLine($"⚠️ WARNING: LotId is empty/null!");
+                            await _allocationService.AllocateInventoryAsync(gii, gi.WarehouseId);
+                            // Reload allocations sau khi tạo
+                            await _dbContext.Entry(gii).Collection(x => x.Allocations).LoadAsync();
                         }
 
-                        Console.WriteLine($"Calling AdjustPickingAsync - LocationId: {gia.LocationId}, LotId: {gia.LotId}");
+                        var allocateIds = dto.Allocations.Select(x => x.Id).ToList();
+                        var allAllocates = await _dbContext.GoodsIssueAllocates
+                            .Where(a => allocateIds.Contains(a.Id))
+                            .ToListAsync();
 
-                        // ✅ Adjust inventory (chỉ modify entities, chưa save)
-                        await _inventoryService.AdjustPickingAsync(
-                            gi.WarehouseId,
-                            gia.LocationId.Value,
-                            dto.ProductId,
-                            actualPicked,
-                            InventoryActionType.AdjustDecrease,
-                            $"PICK-{gia.Id.ToString()[..8]}-{gia.PickedQty}",
-                            gia.LotId
-                        );
-
-                        Console.WriteLine($"Calling AdjustAsync - IssuedLocationId: {issuedLocation.Id}, LotId: {gia.LotId}");
-
-                        await _inventoryService.AdjustAsync(
-                            gi.WarehouseId,
-                            issuedLocation.Id,
-                            dto.ProductId,
-                            actualPicked,
-                            InventoryActionType.AdjustIncrease,
-                            gia.LotId,
-                            refCode: $"PICKIN-{gia.Id.ToString()[..8]}-{gia.PickedQty}"
-                        );
-                    }
-
-                    var totalPicked = gii.Allocations.Sum(a => a.PickedQty);
-                    var totalAllocated = gii.Allocations.Sum(a => a.AllocatedQty);
-                    gii.Status = (totalPicked >= gii.Quantity)
-                        ? GIStatus.Picked
-                        : (totalPicked > 0 ? GIStatus.Picking : gii.Status);
-
-                    // ✅ Debug ChangeTracker
-                    Console.WriteLine("\n=== CHANGE TRACKER BEFORE SAVE ===");
-                    var trackedChanges = _dbContext.ChangeTracker.Entries()
-                        .Where(e => e.State != EntityState.Unchanged && e.State != EntityState.Detached)
-                        .ToList();
-
-                    Console.WriteLine($"Total tracked changes: {trackedChanges.Count}");
-
-                    foreach (var entry in trackedChanges)
-                    {
-                        Console.WriteLine($"- {entry.Entity.GetType().Name}: {entry.State}");
-
-                        if (entry.State == EntityState.Modified)
+                        // 1. Calculate incoming changes and total picked target
+                        decimal incomingQtySum = 0;
+                        foreach (var itemDto in dto.Allocations)
                         {
-                            var props = entry.Properties
-                                .Where(p => p.IsModified)
-                                .Select(p => $"{p.Metadata.Name}: {p.OriginalValue} → {p.CurrentValue}");
-                            Console.WriteLine($"  Modified: {string.Join(", ", props)}");
+                            var gia = allAllocates.FirstOrDefault(a => a.Id == itemDto.Id);
+                            if (gia == null) continue;
+
+                            decimal actualPicked = itemDto.PickedQty;
+                            if (actualPicked <= 0) continue;
+
+                            decimal actualPickedInBase = await _productUomService.ConvertToBaseQuantityAsync(dto.ProductId, gii.UnitId, actualPicked);
+
+                            // Check allocation-level constraint
+                            if (gia.PickedQty + actualPickedInBase > gia.AllocatedQty)
+                                throw new BusinessException("PICK_EXCEEDS_ALLOCATION", $"Số lượng pick vượt quá phân bổ (Allocation={gia.AllocatedQty}, Đã Pick={gia.PickedQty}, Yêu cầu thêm={actualPickedInBase}).");
+
+                            incomingQtySum += actualPickedInBase;
                         }
-                    }
 
-                    // ✅ SAVE TẤT CẢ: allocations + inventories
-                    int retryCount = 0;
-                    const int maxRetries = 2;
+                        var currentTotalPicked = gii.Allocations.Sum(a => a.PickedQty);
+                        // Check item-level constraint: totalPicked + incomingQtySum <= gii.BaseQuantity
+                        if (currentTotalPicked + incomingQtySum > gii.BaseQuantity)
+                            throw new BusinessException("PICK_EXCEEDS_REQUEST", $"Tổng số lượng pick vượt quá số lượng yêu cầu (Yêu cầu={gii.BaseQuantity}, Đã Pick={currentTotalPicked}, Yêu cầu thêm={incomingQtySum}).");
 
-                    while (true)
-                    {
-                        try
+                        // 2. Execute stock adjustments
+                        foreach (var itemDto in dto.Allocations)
                         {
-                            var result = await _dbContext.SaveChangesAsync();
-                            Console.WriteLine($"\n✅ SaveChanges result: {result} rows affected");
-                            break;
-                        }
-                        catch (DbUpdateConcurrencyException) when (retryCount < maxRetries)
-                        {
-                            retryCount++;
-                            foreach (var entry in _dbContext.ChangeTracker.Entries())
+                            var gia = allAllocates.FirstOrDefault(a => a.Id == itemDto.Id);
+                            if (gia == null) continue;
+
+                            decimal actualPicked = itemDto.PickedQty;
+                            if (actualPicked <= 0) continue;
+
+                            if (!gia.LocationId.HasValue || gia.LocationId == Guid.Empty)
                             {
-                                await entry.ReloadAsync();
+                                throw new BusinessException(
+                                    "INVALID_LOCATION",
+                                    "Allocation chưa có vị trí kho hợp lệ."
+                                );
                             }
+
+                            decimal actualPickedInBase = await _productUomService.ConvertToBaseQuantityAsync(dto.ProductId, gii.UnitId, actualPicked);
+
+                            gia.PickedQty += actualPickedInBase;
+                            gia.Status = (gia.PickedQty >= gia.AllocatedQty) ? GIAStatus.Picked : GIAStatus.Picking;
+
+                            // A. Unlock soft reservation on the storage location FIRST
+                            // Otherwise, OnHand quantity may temporarily drop below LockedQuantity and trigger INSUFFICIENT_STOCK validation.
+                            if (gia.LocationId.HasValue && gia.LocationId.Value != Guid.Empty)
+                            {
+                                await _inventoryService.UnlockStockAsync(
+                                    gi.WarehouseId,
+                                    gia.LocationId.Value,
+                                    dto.ProductId,
+                                    actualPickedInBase,
+                                    $"Released reservation for picking GI Item {gii.Id}",
+                                    gia.LotId
+                                );
+                            }
+
+                            // B. Adjust storage stock DOWN (InventoryActionType.Pick) SECOND
+                            await _inventoryService.AdjustPickingAsync(
+                                gi.WarehouseId,
+                                gia.LocationId.Value,
+                                dto.ProductId,
+                                actualPickedInBase,
+                                InventoryActionType.Pick,
+                                $"PICK-{gia.Id.ToString()[..8]}-{gia.PickedQty}",
+                                gia.LotId,
+                                unitId: gii.UnitId,
+                                originalQty: actualPicked
+                            );
+
+                            // C. Adjust stage gate stock UP (InventoryActionType.Stage)
+                            await _inventoryService.AdjustAsync(
+                                gi.WarehouseId,
+                                issuedLocation.Id,
+                                dto.ProductId,
+                                actualPickedInBase,
+                                InventoryActionType.Stage,
+                                gia.LotId,
+                                refCode: $"STAGE-{gia.Id.ToString()[..8]}-{gia.PickedQty}",
+                                unitId: gii.UnitId,
+                                originalQty: actualPicked
+                            );
                         }
-                        catch (DbUpdateException ex) when (retryCount < maxRetries && (ex.InnerException?.Message.Contains("Duplicate") == true || ex.InnerException?.Message.Contains("unique") == true))
+
+                        // 3. Propagate Statuses
+                        var totalPicked = gii.Allocations.Sum(a => a.PickedQty);
+                        gii.Status = (totalPicked >= gii.BaseQuantity)
+                            ? GIStatus.Picked
+                            : (totalPicked > 0 ? GIStatus.Picking : gii.Status);
+
+                        // Propagate status to parent GoodsIssue
+                        var allGii = _dbContext.GoodsIssueItems.Local.Where(x => x.GoodsIssueId == gi.Id).ToList();
+                        if (!allGii.Any())
                         {
-                            retryCount++;
-                            _dbContext.ChangeTracker.Clear();
-                            // In this case we would ideally re-run the whole Picking logic
-                            // For now we re-throw to allow strategy.ExecuteAsync to retry if configured
+                            allGii = await _dbContext.GoodsIssueItems.Where(x => x.GoodsIssueId == gi.Id).ToListAsync();
+                        }
+                        if (allGii.All(x => x.Status == GIStatus.Picked))
+                        {
+                            gi.Status = GIStatus.Picked;
+                        }
+                        else if (allGii.Any(x => x.Status == GIStatus.Picking || x.Status == GIStatus.Picked))
+                        {
+                            gi.Status = GIStatus.Picking;
+                        }
+
+                        await _dbContext.SaveChangesAsync();
+
+                        // 4. Post-adjustment negative balance validation to prevent race conditions from producing invalid stock states
+                        var updatedInventories = await _dbContext.Inventories
+                            .Where(i => i.WarehouseId == gi.WarehouseId && i.ProductId == dto.ProductId)
+                            .ToListAsync();
+
+                        foreach (var inv in updatedInventories)
+                        {
+                            if (inv.OnHandQuantity < 0)
+                                throw new BusinessException("NEGATIVE_STOCK_DETECTED", $"Số lượng tồn thực tế không được phép âm (Vị trí ID: {inv.LocationId}, Tồn: {inv.OnHandQuantity}).");
+                            if (inv.LockedQuantity < 0)
+                                throw new BusinessException("NEGATIVE_LOCK_DETECTED", $"Số lượng khóa không được phép âm (Vị trí ID: {inv.LocationId}, Khóa: {inv.LockedQuantity}).");
+                            if ((inv.OnHandQuantity - inv.LockedQuantity) < 0)
+                                throw new BusinessException("INSUFFICIENT_AVAILABLE_STOCK", $"Số lượng khả dụng không đủ (Vị trí ID: {inv.LocationId}, Thực tế: {inv.OnHandQuantity}, Đang khóa: {inv.LockedQuantity}).");
+                        }
+
+                        await transaction.CommitAsync();
+
+                        // Enterprise Traceability Audit Logging
+                        _logger.LogInformation("✅ Picking completed successfully. GoodsIssueId={GoodsIssueId}, ProductId={ProductId}, PickedBy={PickedBy}, TotalPicked={TotalPicked}, Timestamp={Timestamp}",
+                            dto.GoodsIssueId, dto.ProductId, jwtService.GetUserId() ?? 0, totalPicked, DateTime.UtcNow);
+
+                        break; // Success, exit retry loop
+                    }
+                    catch (DbUpdateConcurrencyException ex)
+                    {
+                        await transaction.RollbackAsync();
+                        if (retry == maxRetries)
+                        {
+                            _logger.LogError(ex, "Failed to complete Picking due to optimistic concurrency after maximum retries.");
                             throw;
                         }
+                        _logger.LogWarning("Concurrency conflict detected during Picking. Retrying {Retry}/{MaxRetries}...", retry, maxRetries);
+                        _dbContext.ChangeTracker.Clear();
+                        await Task.Delay(delayMs * retry);
                     }
-
-                    await transaction.CommitAsync();
-                    Console.WriteLine("✅ Transaction committed");
-                }
-                catch (Exception ex)
-                {
-                    await transaction.RollbackAsync();
-                    Console.WriteLine($"❌ Error: {ex.Message}");
-                    Console.WriteLine($"Stack: {ex.StackTrace}");
-                    throw;
+                    catch (Exception ex)
+                    {
+                        await transaction.RollbackAsync();
+                        _logger.LogError(ex, "Error in Picking: {Message}", ex.Message);
+                        throw;
+                    }
                 }
             });
         }
+
         public async Task OutgoingStockCount(IssueGoodsDto dto)
         {
             var strategy = _dbContext.Database.CreateExecutionStrategy();
 
             await strategy.ExecuteAsync(async () =>
             {
-                using var tx = await _dbContext.Database.BeginTransactionAsync();
-                try
+                int maxRetries = 3;
+                int delayMs = 100;
+
+                for (int retry = 1; retry <= maxRetries; retry++)
                 {
-                    // 1. Lấy dữ liệu Item và kiểm tra cơ bản
-                    var gii = await _dbContext.GoodsIssueItems
-                        .FirstOrDefaultAsync(x => x.Id == dto.GoodsIssueItemId);
-
-                    if (gii == null) throw new Exception("Không tìm thấy dòng hàng xuất kho.");
-                    if (dto.IssuedQty <= 0) throw new Exception("Số lượng xuất phải lớn hơn 0.");
-
-                    // ✅ CAST RÕ RÀNG
-                    int issuedQtyInt = dto.IssuedQty;
-
-                    // Kiểm tra tổng số lượng đã xuất so với yêu cầu
-                    if (gii.Issued_Qty + issuedQtyInt > gii.Quantity)
-                        throw new Exception("Tổng số lượng xuất vượt quá số lượng yêu cầu trên phiếu.");
-
-                    // 2. Lấy danh sách các lô hàng đã được Pick (đang nằm ở cổng xuất)
-                    var pickedAllocates = await _dbContext.GoodsIssueAllocates
-                        .Where(x => x.GoodsIssueItemId == gii.Id && x.PickedQty > 0)
-                        .OrderBy(x => x.LotId)
-                        .ToListAsync();
-
-                    // Tính số lượng thực tế đang nằm chờ ở cổng xuất (Picked - Issued)
-                    decimal totalCurrentlyAtGate = pickedAllocates.Sum(x => x.PickedQty - x.IssuedQty);
-
-                    if (dto.IssuedQty > totalCurrentlyAtGate)
-                        throw new Exception("Số lượng xuất vượt quá số lượng hàng đang có sẵn tại cổng xuất.");
-
-                    // 3. Lấy thông tin phiếu xuất và vị trí xuất
-                    var gi = await _dbContext.GoodsIssues
-                        .FirstOrDefaultAsync(x => x.Id == gii.GoodsIssueId);
-
-                    var issueLocation = await _warehouse.GetIssuedLocationId(gi.WarehouseId);
-                    if (issueLocation == null)
-                        throw new Exception("Kho chưa cấu hình vị trí xuất hàng (Issue Location).");
-
-                    // 4. TRỪ TỒN KHO TẠI CỔNG XUẤT THEO TỪNG LÔ
-                    decimal qtyRemainingToIssue = issuedQtyInt;
-
-                    foreach (var alloc in pickedAllocates)
+                    using var tx = await _dbContext.Database.BeginTransactionAsync(global::System.Data.IsolationLevel.ReadCommitted);
+                    try
                     {
-                        if (qtyRemainingToIssue <= 0) break;
+                        var gii = await _dbContext.GoodsIssueItems
+                            .FirstOrDefaultAsync(x => x.Id == dto.GoodsIssueItemId);
 
-                        decimal availableInThisAlloc = alloc.PickedQty - alloc.IssuedQty;
-                        decimal takeFromThisLot = Math.Min(qtyRemainingToIssue, availableInThisAlloc);
+                        if (gii == null) throw new BusinessException("GII_NOT_FOUND", "Không tìm thấy dòng hàng xuất kho.");
+                        if (dto.IssuedQty <= 0) throw new BusinessException("INVALID_ISSUED_QTY", "Số lượng xuất phải lớn hơn 0.");
 
-                        if (takeFromThisLot <= 0) continue;
+                        if (gii.Status == GIStatus.Pending || gii.Status == GIStatus.Approve)
+                        {
+                            throw new BusinessException(
+                                "ITEM_NOT_PICKED",
+                                "Dòng hàng chưa được pick."
+                            );
+                        }
 
-                        await _inventoryService.AdjustAsync(
-                            gi.WarehouseId,
-                            issueLocation.Id,
-                            gii.ProductId,
-                            takeFromThisLot,
-                            InventoryActionType.Issue,
-                            alloc.LotId,
-                            $"ISSUE-{alloc.Id.ToString()[..8]}-{alloc.IssuedQty}"
-                        );
+                        decimal issuedQtyDec = dto.IssuedQty;
 
-                        alloc.IssuedQty += takeFromThisLot;
-                        alloc.Status = (alloc.IssuedQty >= alloc.AllocatedQty) ? GIAStatus.Picked : GIAStatus.Picking;
-                        qtyRemainingToIssue -= takeFromThisLot;
-                    }
+                        if (gii.Issued_Qty + issuedQtyDec > gii.Quantity)
+                            throw new BusinessException("ISSUE_EXCEEDS_REQUEST", "Tổng số lượng xuất vượt quá số lượng yêu cầu trên phiếu.");
 
-                    // 5. ✅ CẬP NHẬT SỐ LƯỢNG VÀ CHECK STATUS
-                    gii.Issued_Qty += issuedQtyInt;
-
-                    // ✅ LOG ĐỂ DEBUG
-                    Console.WriteLine($"GoodsIssueItem {gii.Id}:");
-                    Console.WriteLine($"  Issued_Qty: {gii.Issued_Qty}");
-                    Console.WriteLine($"  Quantity: {gii.Quantity}");
-                    Console.WriteLine($"  Is Complete: {gii.Issued_Qty >= gii.Quantity}");
-
-                    gii.Status = (gii.Issued_Qty >= gii.Quantity)
-                        ? GIStatus.Complete
-                        : GIStatus.Partically_Issued;
-
-                    Console.WriteLine($"  New Status: {gii.Status}");
-
-                    // 6. Cập nhật trạng thái của GoodsIssue
-                    var allGiiOfThisGi = _dbContext.GoodsIssueItems
-                        .Local
-                        .Where(x => x.GoodsIssueId == gi.Id)
-                        .ToList();
-
-                    // If not all items are in Local (some were never loaded), fall back:
-                    if (!allGiiOfThisGi.Any())
-                    {
-                        allGiiOfThisGi = await _dbContext.GoodsIssueItems
-                            .Where(x => x.GoodsIssueId == gi.Id)
+                        var pickedAllocates = await _dbContext.GoodsIssueAllocates
+                            .Where(x => x.GoodsIssueItemId == gii.Id && x.PickedQty > 0)
+                            .OrderBy(x => x.LotId)
                             .ToListAsync();
-                    }
 
-                    // ✅ CHECK TẤT CẢ ITEMS
-                    var isGiComplete = allGiiOfThisGi.All(x => x.Status == GIStatus.Complete);
+                        decimal totalCurrentlyAtGate = pickedAllocates.Sum(x => x.PickedQty - x.IssuedQty);
 
-                    Console.WriteLine($"GoodsIssue {gi.Id}:");
-                    Console.WriteLine($"  Total Items: {allGiiOfThisGi.Count}");
-                    Console.WriteLine($"  Complete Items: {allGiiOfThisGi.Count(x => x.Status == GIStatus.Complete)}");
-                    Console.WriteLine($"  Is Complete: {isGiComplete}");
+                        decimal issuedQtyInBase = await _productUomService.ConvertToBaseQuantityAsync(gii.ProductId, gii.UnitId, issuedQtyDec);
 
-                    gi.Status = isGiComplete ? GIStatus.Complete : GIStatus.Partically_Issued;
-                    gi.IssuedAt = DateTime.UtcNow;
+                        if (issuedQtyInBase > totalCurrentlyAtGate)
+                            throw new BusinessException("ISSUE_EXCEEDS_PICKED", "Số lượng xuất vượt quá số lượng hàng đang có sẵn tại cổng xuất.");
 
-                    Console.WriteLine($"  New Status: {gi.Status}");
+                        var gi = await _dbContext.GoodsIssues
+                            .FirstOrDefaultAsync(x => x.Id == gii.GoodsIssueId);
 
-                    // 7. CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG (Nếu là đơn xuất kho)
-                    if (gi.Type == GIType.Outbound && gii.OutboundOrderItemId.HasValue)
-                    {
-                        var item = await _dbContext.OutboundOrderItems
-                            .FirstOrDefaultAsync(s => s.Id == gii.OutboundOrderItemId);
+                        var issueLocation = await _warehouse.GetIssuedLocationId(gi.WarehouseId);
+                        if (issueLocation == null)
+                            throw new BusinessException("ISSUE_LOCATION_NOT_CONFIGURED", "Kho chưa cấu hình vị trí xuất hàng (Issue Location).");
 
-                        if (item != null)
+                        decimal qtyRemainingToIssueInBase = issuedQtyInBase;
+
+                        foreach (var alloc in pickedAllocates)
                         {
-                            item.Issued_Qty += issuedQtyInt;
+                            if (qtyRemainingToIssueInBase <= 0) break;
 
-                            item.Status = (item.Issued_Qty >= item.Quantity)
-                                ? OutboundStatus.Complete
-                                : OutboundStatus.Partically_Issued;
+                            decimal availableInThisAlloc = alloc.PickedQty - alloc.IssuedQty;
+                            decimal takeFromThisLotInBase = Math.Min(qtyRemainingToIssueInBase, availableInThisAlloc);
 
-                            // ✅ CẬP NHẬT OUTBOUND ORDER
-                            var order = await _dbContext.OutboundOrders
-                                .FirstOrDefaultAsync(s => s.Id == item.OutboundOrderId);
+                            if (takeFromThisLotInBase <= 0) continue;
 
-                            if (order != null)
+                            decimal takeFromThisLotInUom = await _productUomService.ConvertFromBaseQuantityAsync(gii.ProductId, gii.UnitId, takeFromThisLotInBase);
+
+                            // FIX BUG 4: Validate trước khi thực hiện bất kỳ thay đổi nào (check trước, cộng sau)
+                            if (alloc.IssuedQty + takeFromThisLotInBase > alloc.PickedQty)
                             {
-                                var allItemsOfThisOrder = await _dbContext.OutboundOrderItems
-                                    .Where(s => s.OutboundOrderId == order.Id)
-                                    .ToListAsync();
+                                throw new BusinessException(
+                                    "ISSUE_EXCEEDS_PICKED_ALLOC",
+                                    $"Issued vượt picked quantity (Picked={alloc.PickedQty}, " +
+                                    $"Đã issued={alloc.IssuedQty}, Yêu cầu thêm={takeFromThisLotInBase})."
+                                );
+                            }
 
-                                var isOrderComplete = allItemsOfThisOrder.All(s => s.Status == OutboundStatus.Complete);
+                            // Adjust stock physically leaving the gate with action type Issue (trừ staging stock)
+                            await _inventoryService.AdjustAsync(
+                                gi.WarehouseId,
+                                issueLocation.Id,
+                                gii.ProductId,
+                                takeFromThisLotInBase,
+                                InventoryActionType.Issue,
+                                alloc.LotId,
+                                $"ISSUE-{alloc.Id.ToString()[..8]}-{alloc.IssuedQty}",
+                                unitId: gii.UnitId,
+                                originalQty: takeFromThisLotInUom
+                            );
 
-                                order.Status = isOrderComplete ? OutboundStatus.Complete : OutboundStatus.Partically_Issued;
+                            alloc.IssuedQty += takeFromThisLotInBase; // cập nhật sau khi thành công
+                            alloc.Status = (alloc.IssuedQty >= alloc.PickedQty) ? GIAStatus.Complete : GIAStatus.Picked;
+                            qtyRemainingToIssueInBase -= takeFromThisLotInBase;
+                        }
+
+                        gii.Issued_Qty += issuedQtyDec;
+
+                        gii.Status = (gii.Issued_Qty >= gii.Quantity)
+                            ? GIStatus.Complete
+                            : GIStatus.Partically_Issued;
+
+                        var allGiiOfThisGi = _dbContext.GoodsIssueItems
+                            .Local
+                            .Where(x => x.GoodsIssueId == gi.Id)
+                            .ToList();
+
+                        if (!allGiiOfThisGi.Any())
+                        {
+                            allGiiOfThisGi = await _dbContext.GoodsIssueItems
+                                .Where(x => x.GoodsIssueId == gi.Id)
+                                .ToListAsync();
+                        }
+
+                        var isGiComplete = allGiiOfThisGi.All(x => x.Status == GIStatus.Complete);
+                        gi.Status = isGiComplete ? GIStatus.Complete : GIStatus.Partically_Issued;
+                        gi.IssuedAt = DateTime.UtcNow;
+
+                        if (gi.Type == GIType.Outbound && gii.OutboundOrderItemId.HasValue)
+                        {
+                            var item = await _dbContext.OutboundOrderItems
+                                .FirstOrDefaultAsync(s => s.Id == gii.OutboundOrderItemId);
+
+                            if (item != null)
+                            {
+                                item.Issued_Qty += issuedQtyDec;
+                                item.Status = (item.Issued_Qty >= item.Quantity)
+                                    ? OutboundStatus.Complete
+                                    : OutboundStatus.Partically_Issued;
+
+                                var order = await _dbContext.OutboundOrders
+                                    .FirstOrDefaultAsync(s => s.Id == item.OutboundOrderId);
+
+                                if (order != null)
+                                {
+                                    // FIX BUG 5: item đã được EF track trong session này, nên Local sẽ thấy status mới. Fallback DB, đảm bảo include item đang tracking.
+                                    var allItemsOfThisOrder = _dbContext.OutboundOrderItems
+                                        .Local
+                                        .Where(s => s.OutboundOrderId == order.Id)
+                                        .ToList();
+
+                                    if (!allItemsOfThisOrder.Any())
+                                    {
+                                        allItemsOfThisOrder = await _dbContext.OutboundOrderItems
+                                            .Where(s => s.OutboundOrderId == order.Id)
+                                            .ToListAsync();
+                                    }
+
+                                    // Nếu vẫn không thấy item hiện tại trong list (edge case), thêm vào
+                                    if (allItemsOfThisOrder.All(s => s.Id != item.Id))
+                                        allItemsOfThisOrder.Add(item);
+
+                                    var isOrderComplete = allItemsOfThisOrder.All(s => s.Status == OutboundStatus.Complete);
+                                    order.Status = isOrderComplete ? OutboundStatus.Complete : OutboundStatus.Partically_Issued;
+                                }
                             }
                         }
+
+                        await _dbContext.SaveChangesAsync();
+
+                        // Post-adjustment negative balance validation to prevent race conditions from producing invalid stock states
+                        var updatedInventories = await _dbContext.Inventories
+                            .Where(i => i.WarehouseId == gi.WarehouseId && i.ProductId == gii.ProductId)
+                            .ToListAsync();
+
+                        foreach (var inv in updatedInventories)
+                        {
+                            if (inv.OnHandQuantity < 0)
+                                throw new BusinessException("NEGATIVE_STOCK_DETECTED", $"Số lượng tồn thực tế không được phép âm (Vị trí ID: {inv.LocationId}, Tồn: {inv.OnHandQuantity}).");
+                            if (inv.LockedQuantity < 0)
+                                throw new BusinessException("NEGATIVE_LOCK_DETECTED", $"Số lượng khóa không được phép âm (Vị trí ID: {inv.LocationId}, Khóa: {inv.LockedQuantity}).");
+                            if ((inv.OnHandQuantity - inv.LockedQuantity) < 0)
+                                throw new BusinessException("INSUFFICIENT_AVAILABLE_STOCK", $"Số lượng khả dụng không đủ (Vị trí ID: {inv.LocationId}, Thực tế: {inv.OnHandQuantity}, Đang khóa: {inv.LockedQuantity}).");
+                        }
+
+                        await tx.CommitAsync();
+
+                        // Enterprise Traceability Audit Logging
+                        _logger.LogInformation("✅ Issue Goods completed successfully. GoodsIssueId={GoodsIssueId}, ProductId={ProductId}, IssuedBy={IssuedBy}, TotalIssued={TotalIssued}, Timestamp={Timestamp}",
+                            gii.GoodsIssueId, gii.ProductId, jwtService.GetUserId() ?? 0, gii.Issued_Qty, DateTime.UtcNow);
+
+                        break; // Success, exit retry loop
                     }
-
-
-                    int retryCount = 0;
-                    const int maxRetries = 2;
-
-                    while (true)
+                    catch (DbUpdateConcurrencyException ex)
                     {
-                        try
+                        await tx.RollbackAsync();
+                        if (retry == maxRetries)
                         {
-                            await _dbContext.SaveChangesAsync();
-                            await tx.CommitAsync();
-                            break;
-                        }
-                        catch (DbUpdateConcurrencyException) when (retryCount < maxRetries)
-                        {
-                            retryCount++;
-                            foreach (var entry in _dbContext.ChangeTracker.Entries())
-                            {
-                                await entry.ReloadAsync();
-                            }
-                        }
-                        catch (DbUpdateException ex) when (retryCount < maxRetries && (ex.InnerException?.Message.Contains("Duplicate") == true || ex.InnerException?.Message.Contains("unique") == true))
-                        {
-                            retryCount++;
-                            _dbContext.ChangeTracker.Clear();
+                            _logger.LogError(ex, "Failed to complete Issue Goods due to optimistic concurrency after maximum retries.");
                             throw;
                         }
+                        _logger.LogWarning("Concurrency conflict detected during Issue Goods. Retrying {Retry}/{MaxRetries}...", retry, maxRetries);
+                        _dbContext.ChangeTracker.Clear();
+                        await Task.Delay(delayMs * retry);
                     }
-
-                    Console.WriteLine("✅ Transaction committed");
-                }
-                catch (Exception ex)
-                {
-                    await tx.RollbackAsync();
-                    Console.WriteLine($"❌ Error: {ex.Message}");
-                    throw;
+                    catch (Exception ex)
+                    {
+                        await tx.RollbackAsync();
+                        _logger.LogError(ex, "Error in OutgoingStockCount: {Message}", ex.Message);
+                        throw;
+                    }
                 }
             });
         }
+
         public async Task<GoodsIssue> CreateGIAsync(GoodsIssueDto dto)
         {
-            var warehousecheck = await _dbContext.Warehouses.FirstOrDefaultAsync(s => s.Id == dto.WarehouseId);
-            if (warehousecheck.WarehouseType != WarehouseType.RawMaterial)
-                throw new Exception("Không thể xuất kho không thuộc loại vật liệu");
-            var GI = new GoodsIssue
-            {
-                Id = dto.Id,
-                Code = GenerateGICode(),
-                OutboundOrderId = dto.OutboundOrderId,
-                Type = GIType.Production,
-                Status = (GIStatus)dto.Status,
-                CreateAt = DateTime.UtcNow,
-                Items = dto.Items.Select(i => new GoodsIssueItem
-                {
-                    Id = Guid.NewGuid(),
-                    ProductId = i.ProductId,
-                    Quantity = i.Quantity,
-                    Issued_Qty = 0,
-                    GoodsIssueId= dto.Id,
-                    Status = GIStatus.Pending,
-                    CreatedAt = DateTime.UtcNow,
-                }).ToList()
-            };
-            _dbContext.GoodsIssues.Add(GI);
-            await _dbContext.SaveChangesAsync();
-
-            return GI;
+            return await _goodsIssueService.CreateGIAsync(dto);
         }
-
-       
 
         private string GenerateGICode()
         {
-            // Lấy ngày hôm nay
-            var today = DateTime.UtcNow.Date; // chỉ YYYY-MM-DD
-
-            // Đếm số GR đã tạo trong ngày hôm nay
-            var countToday = _dbContext.GoodsIssues
-                                .Count(gr => gr.CreateAt >= today && gr.CreateAt < today.AddDays(1));
-
-            // Tăng số thứ tự 1
-            var seq = countToday + 1;
-
-            // Format code: GR-YYYYMMDD-XXXX
-            var code = $"GI-{today:yyyyMMdd}-{seq:0000}";
-
-            return code;
+            var today = DateTime.UtcNow.Date;
+            var suffix = Guid.NewGuid().ToString()[..8].ToUpper();
+            return $"GI-{today:yyyyMMdd}-{suffix}";
         }
+
         private string GenerateOutboundOrderCode()
         {
             var today = DateTime.UtcNow.Date;
-            var countToday = _dbContext.OutboundOrders
-                                .Count(gr => gr.CreatedAt >= today && gr.CreatedAt < today.AddDays(1));
-            var seq = countToday + 1;
-            var code = $"ORD-{today:yyyyMMdd}-{seq:0000}";
-            return code;
+            var suffix = Guid.NewGuid().ToString()[..8].ToUpper();
+            return $"ORD-{today:yyyyMMdd}-{suffix}";
         }
 
         public async Task UpdateGIStatusAsync(Guid giId, GIStatus status)
         {
-            var gi = await _dbContext.GoodsIssues
-                .FirstOrDefaultAsync(x => x.Id == giId);
-
-            if (gi == null)
-                throw new Exception("GoodsIssue không tồn tại");
-
-            gi.Status = status;
-            gi.UpdateAt = DateTime.UtcNow;
-
-            // update item luôn cho đồng bộ
-            var items = await _dbContext.GoodsIssueItems
-                .Where(x => x.GoodsIssueId == giId)
-                .ToListAsync();
-
-            foreach (var item in items)
-            {
-                item.Status = status;
-                item.UpdatedAt = DateTime.UtcNow;
-            }
-
-            await _dbContext.SaveChangesAsync();
+            await _goodsIssueService.UpdateGIStatusAsync(giId, status);
         }
+
         public async Task<OutboundOrderDto> RejectOutboundOrderAsync(Guid orderId)
         {
             var entity = await _dbContext.OutboundOrders
@@ -909,10 +749,10 @@ namespace Wms.Application.Services.Outbound
                 .FirstOrDefaultAsync(x => x.Id == orderId);
 
             if (entity == null)
-                throw new Exception("OutboundOrder not found");
+                throw new BusinessException("ORDER_NOT_FOUND", "OutboundOrder not found");
 
             if (entity.Status != OutboundStatus.Pending)
-                throw new Exception("Only DRAFT orders can be rejected");
+                throw new BusinessException("ORDER_NOT_PENDING", "Only DRAFT orders can be rejected");
 
             entity.Status = OutboundStatus.Rejected;
             entity.UpdatedAt = DateTime.UtcNow;
@@ -926,114 +766,66 @@ namespace Wms.Application.Services.Outbound
             return _mapper.Map<OutboundOrderDto>(entity);
         }
 
-        private async Task AllocateInventoryAsync(GoodsIssueItem item, Guid warehouseId)
+        #endregion
+
+        #region Private Helpers
+
+        private async Task PopulateUnitNamesAsync(OutboundOrderDto dto)
         {
-            decimal remainingQty = item.Quantity;
-
-            // Lấy locations
-            var locations = await _inventoryService.GetAvailableLocations(
-                item.ProductId,
-                warehouseId
-            );
-
-            // LỌC BỎ CÁC LÔ ĐÃ HẾT HẠN
-            var validLocations = locations
-                .Where(loc => !loc.ExpiryDate.HasValue || loc.ExpiryDate.Value > DateTime.UtcNow)
-                .ToList();
-
-            // KIỂM TRA: CÓ LÔ CÒN HẠN KHÔNG?
-            if (!validLocations.Any())
+            if (dto == null) return;
+            var unitNames = await _dbContext.Units.ToDictionaryAsync(u => u.Id, u => u.Name);
+            if (dto.Items != null)
             {
-                var product = await _dbContext.Products
-                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
-
-                throw new Exception(
-                    $"Không thể phân bổ sản phẩm '{product?.Name ?? item.ProductId.ToString()}'. " +
-                    $"Tất cả {locations.Count} lô hàng trong kho đều đã hết hạn sử dụng. " +
-                    $"Vui lòng kiểm tra lại tồn kho."
-                );
-            }
-
-            // TÍNH TỔNG SỐ LƯỢNG KHẢ DỤNG (chỉ lô còn hạn)
-            decimal totalValidQty = validLocations.Sum(loc => loc.AvailableQty);
-
-            // CẢNH BÁO NẾU KHÔNG ĐỦ HÀNG CÒN HẠN
-            if (totalValidQty < item.Quantity)
-            {
-                var product = await _dbContext.Products
-                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
-
-                var expiredQty = locations
-                    .Where(loc => loc.ExpiryDate.HasValue && loc.ExpiryDate.Value <= DateTime.UtcNow)
-                    .Sum(loc => loc.AvailableQty);
-
-                Console.WriteLine($"⚠️ WARNING: Sản phẩm '{product?.Name}' không đủ hàng còn hạn!");
-                Console.WriteLine($"   - Yêu cầu: {item.Quantity}");
-                Console.WriteLine($"   - Có sẵn (còn hạn): {totalValidQty}");
-                Console.WriteLine($"   - Thiếu: {item.Quantity - totalValidQty}");
-                Console.WriteLine($"   - Hàng đã hết hạn: {expiredQty}");
-            }
-
-            // FEFO: Sắp xếp theo ExpiryDate (null cuối cùng)
-            var sortedLocations = validLocations
-                .OrderBy(loc => loc.ExpiryDate ?? DateTime.MaxValue)
-                .ThenBy(loc => loc.LotCode)
-                .ToList();
-
-            Console.WriteLine($"\n=== Allocating {item.Quantity} x Product {item.ProductId} ===");
-
-            foreach (var loc in sortedLocations)
-            {
-                if (remainingQty <= 0)
-                    break;
-
-                var allocQty = Math.Min(remainingQty, loc.AvailableQty);
-
-                Console.WriteLine($"✅ Allocate {allocQty} from Location {loc.Code}, " +
-                                $"Lot {loc.LotCode}, " +
-                                $"Expiry: {loc.ExpiryDate?.ToString("yyyy-MM-dd") ?? "N/A"}");
-
-                // CẢNH BÁO nếu lô gần hết hạn (< 30 ngày)
-                if (loc.ExpiryDate.HasValue)
+                foreach (var item in dto.Items)
                 {
-                    var daysUntilExpiry = (loc.ExpiryDate.Value - DateTime.UtcNow).TotalDays;
-                    if (daysUntilExpiry < 30)
+                    if (unitNames.TryGetValue(item.UnitId, out var name))
+                        item.UnitName = name;
+                }
+            }
+            if (dto.GoodsIssues != null)
+            {
+                foreach (var gi in dto.GoodsIssues)
+                {
+                    if (gi.Items != null)
                     {
-                        Console.WriteLine($"  ⚠️ WARNING: Lot expires in {Math.Round(daysUntilExpiry)} days!");
+                        foreach (var item in gi.Items)
+                        {
+                            if (unitNames.TryGetValue(item.UnitId, out var name))
+                                item.UnitName = name;
+                        }
                     }
                 }
-
-                _dbContext.GoodsIssueAllocates.Add(new GoodsIssueAllocate
-                {
-                    Id = Guid.NewGuid(),
-                    GoodsIssueItemId = item.Id,
-                    LocationId = loc.Id,
-                    LotId = loc.LotId,
-                    AllocatedQty = allocQty,
-                    PickedQty = 0,
-                    IssuedQty = 0,
-                    Status = GIAStatus.Planned
-                });
-
-                remainingQty -= allocQty;
             }
+        }
 
-            // Nếu thiếu hàng (sau khi allocate hết lô còn hạn)
-            if (remainingQty > 0)
+        private async Task PopulateUnitNamesAsync(List<OutboundOrderDto> dtos)
+        {
+            if (dtos == null || !dtos.Any()) return;
+            var unitNames = await _dbContext.Units.ToDictionaryAsync(u => u.Id, u => u.Name);
+            foreach (var dto in dtos)
             {
-                Console.WriteLine($"⚠️ Backorder: {remainingQty} units");
-
-                _dbContext.GoodsIssueAllocates.Add(new GoodsIssueAllocate
+                if (dto.Items != null)
                 {
-                    Id = Guid.NewGuid(),
-                    GoodsIssueItemId = item.Id,
-                    LocationId = null,
-                    LotId = Guid.Empty,
-                    AllocatedQty = remainingQty,
-                    PickedQty = 0,
-                    IssuedQty = 0,
-                    Status = GIAStatus.Planned
-                });
+                    foreach (var item in dto.Items)
+                    {
+                        if (unitNames.TryGetValue(item.UnitId, out var name))
+                            item.UnitName = name;
+                    }
+                }
+                if (dto.GoodsIssues != null)
+                {
+                    foreach (var gi in dto.GoodsIssues)
+                    {
+                        if (gi.Items != null)
+                        {
+                            foreach (var item in gi.Items)
+                            {
+                                if (unitNames.TryGetValue(item.UnitId, out var name))
+                                    item.UnitName = name;
+                            }
+                        }
+                    }
+                }
             }
         }
 

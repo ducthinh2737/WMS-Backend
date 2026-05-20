@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Wms.Application.DTOS.Transfer;
 using Wms.Application.Interfaces.Services;
 using Wms.Application.Interfaces.Services.Inventory;
@@ -29,57 +29,58 @@ public class TransferService : ITransferService
         if (dto.FromWarehouseId == dto.ToWarehouseId && dto.Items.Any(x => x.FromLocationId == x.ToLocationId))
             throw new Exception("Vị trí nguồn và đích không được trùng nhau.");
 
-        // Kiểm tra tồn kho & khóa
-        foreach (var item in dto.Items)
+        var strategy = _db.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync(async () =>
         {
-            var stock = await _db.Inventories
-                .FirstOrDefaultAsync(x => x.LocationId == item.FromLocationId && x.ProductId == item.ProductId);
-
-            if (stock == null || stock.OnHandQuantity - stock.LockedQuantity < item.Quantity)
-                throw new Exception($"Sản phẩm ID {item.ProductId} không đủ tồn kho tại vị trí nguồn.");
-
-            // Khóa số lượng
-            stock.LockedQuantity += item.Quantity;
-            stock.UpdatedAt = DateTime.UtcNow;
-
-            _db.InventoryHistories.Add(new InventoryHistory
+            await using var transaction = await _db.Database.BeginTransactionAsync();
+            try
             {
-                Id = Guid.NewGuid(),
-                WarehouseId = dto.FromWarehouseId,
-                LocationId = item.FromLocationId,
-                ProductId = item.ProductId,
-                QuantityChange = item.Quantity,
-                ActionType = InventoryActionType.Lock,
-                ReferenceCode = "LOCK_FOR_TRANSFER",
-                CreatedAt = DateTime.UtcNow
-            });
-        }
+                // Kiểm tra tồn kho & khóa
+                foreach (var item in dto.Items)
+                {
+                    await _inventoryService.LockStockAsync(
+                        warehouseId: dto.FromWarehouseId,
+                        locationId: item.FromLocationId,
+                        productId: item.ProductId,
+                        qty: item.Quantity,
+                        note: "LOCK_FOR_TRANSFER"
+                    );
+                }
 
-        var transfer = new TransferOrder
-        {
-            Id = Guid.NewGuid(),
-            Code = $"TRF-{DateTime.UtcNow:yyyyMMdd-HHmm}",
-            FromWarehouseId = dto.FromWarehouseId,
-            ToWarehouseId = dto.ToWarehouseId,
-            Status = TransferStatus.Draft,
-            Note = dto.Note,
-            CreatedAt = DateTime.UtcNow,
-            CreatedBy = _jwt.GetUserId() ?? 1,
-            Items = dto.Items.Select(i => new TransferOrderItem
+                var transfer = new TransferOrder
+                {
+                    Id = Guid.NewGuid(),
+                    Code = $"TRF-{DateTime.UtcNow:yyyyMMdd-HHmm}",
+                    FromWarehouseId = dto.FromWarehouseId,
+                    ToWarehouseId = dto.ToWarehouseId,
+                    Status = TransferStatus.Draft,
+                    Note = dto.Note ?? "",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = _jwt.GetUserId() ?? 1,
+                    Items = dto.Items.Select(i => new TransferOrderItem
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = i.ProductId,
+                        FromLocationId = i.FromLocationId,
+                        ToLocationId = i.ToLocationId,
+                        Quantity = i.Quantity,
+                        Note = i.Note ?? ""
+                    }).ToList()
+                };
+
+                _db.TransferOrders.Add(transfer);
+                await _db.SaveChangesAsync();
+                
+                await transaction.CommitAsync();
+                return await GetTransferByIdAsync(transfer.Id);
+            }
+            catch
             {
-                Id = Guid.NewGuid(),
-                ProductId = i.ProductId,
-                FromLocationId = i.FromLocationId,
-                ToLocationId = i.ToLocationId,
-                Quantity = i.Quantity,
-                Note = i.Note
-            }).ToList()
-        };
-
-        _db.TransferOrders.Add(transfer);
-        await _db.SaveChangesAsync();
-
-        return await GetTransferByIdAsync(transfer.Id);
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
 
@@ -99,12 +100,13 @@ public class TransferService : ITransferService
                 if (transfer == null)
                     throw new Exception("Không tìm thấy phiếu chuyển kho.");
 
-                if (transfer.Status != TransferStatus.Draft)
-                    throw new Exception("Chỉ có thể duyệt phiếu ở trạng thái Nháp.");
+                
 
                 foreach (var item in transfer.Items)
                 {
                     var stock = await _db.Set<Inventory>()
+                        .Include(x => x.Lot)
+                        .Include(x => x.Product)
                         .FirstOrDefaultAsync(x =>
                             x.LocationId == item.FromLocationId &&
                             x.ProductId == item.ProductId);
@@ -114,11 +116,15 @@ public class TransferService : ITransferService
                             $"Sản phẩm ID {item.ProductId} không đủ tồn kho tại vị trí nguồn."
                         );
 
+                    decimal beforeQty = stock.OnHandQuantity;
+
                     // 1️⃣ Trừ kho nguồn
                     stock.OnHandQuantity -= item.Quantity;
 
                     // 2️⃣ Mở khóa
                     stock.LockedQuantity -= item.Quantity;
+
+                    decimal afterQty = stock.OnHandQuantity;
 
                     // 3️⃣ Cộng kho đích
                     await _inventoryService.AdjustAsync(
@@ -127,7 +133,8 @@ public class TransferService : ITransferService
                         productId: item.ProductId,
                         qty: item.Quantity,
                         actionType: InventoryActionType.TransferIn,
-                        refCode: transfer.Code
+                        refCode: transfer.Code,
+                        lotId: stock.LotId
                     );
 
                     // 4️⃣ History kho nguồn
@@ -137,9 +144,16 @@ public class TransferService : ITransferService
                         WarehouseId = transfer.FromWarehouseId,
                         LocationId = item.FromLocationId,
                         ProductId = item.ProductId,
+                        LotId = stock.LotId,
+                        LotCode = stock.Lot?.Code,
                         QuantityChange = -item.Quantity,
+                        BaseQuantityChange = -item.Quantity,
+                        UnitId = stock.Product?.UnitId ?? 0,
+                        BeforeQty = beforeQty,
+                        AfterQty = afterQty,
                         ActionType = InventoryActionType.TransferOut,
                         ReferenceCode = transfer.Code,
+                        Note = $"TransferOut for transfer {transfer.Code}",
                         CreatedAt = DateTime.UtcNow
                     });
                 }

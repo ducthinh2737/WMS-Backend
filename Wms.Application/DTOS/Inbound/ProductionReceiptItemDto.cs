@@ -7,8 +7,11 @@ namespace Wms.Application.DTOS.Inbound
         public Guid Id { get; set; }
         public Guid GoodsReceiptId { get; set; }
         public int ProductId { get; set; }
-        public int Quantity { get; set; }
-        public int Receipt_Qty { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal Receipt_Qty { get; set; }
+        public int UnitId { get; set; }
+        public string UnitName { get; set; } = string.Empty;
+        public decimal BaseQuantity { get; set; }
         public string? LotCode { get; set; }
         public DateTime? ExpiryDate { get; set; }           // ← nullable
         public DateTime? ManufacturingDate { get; set; }    // ← thêm + nullable

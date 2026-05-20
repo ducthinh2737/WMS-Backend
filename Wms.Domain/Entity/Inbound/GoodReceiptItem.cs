@@ -7,9 +7,11 @@ public class GoodsReceiptItem
     public Guid Id { get; set; }
     public Guid GoodsReceiptId { get; set; }
     public int ProductId { get; set; }
-    public int Quantity { get; set; }
+    public decimal Quantity { get; set; }
     public Guid InboundOrderItemId { get; set; }
-    public int Received_Qty { get; set; }
+    public decimal Received_Qty { get; set; }
+    public int UnitId { get; set; }
+    public decimal BaseQuantity { get; set; }
     public GRIStatus Status { get; set; }
 
     public DateTime CreatedAt { get; set; }

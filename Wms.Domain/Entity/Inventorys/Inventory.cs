@@ -5,7 +5,7 @@ using Wms.Domain.Entity.MasterData;
 namespace Wms.Domain.Entity.Inventorys;
 
 [Table("Inventories")]
-public class Inventory
+public class Inventory : IVersionedEntity
 {
     [Key]
     public Guid Id { get; set; }
@@ -26,7 +26,7 @@ public class Inventory
     public decimal AvailableQuantity
         => OnHandQuantity - LockedQuantity;
 
-    public DateTime RowVersion { get; set; }
+    public long Version { get; set; } = 1;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

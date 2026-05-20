@@ -20,6 +20,10 @@ namespace Wms.Infrastructure.Persistence.Configurations.Inventorys
                 .HasColumnType("decimal(18,4)")
                 .IsRequired();
 
+            builder.Property(x => x.BaseQuantity)
+                .HasColumnType("decimal(18,4)")
+                .IsRequired();
+
             // ✅ Unique constraint for Idempotency
             builder.HasIndex(x => new { x.ReferenceCode, x.ProductId, x.LotId, x.LocationId, x.ActionType })
                 .IsUnique()

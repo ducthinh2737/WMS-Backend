@@ -40,6 +40,7 @@ namespace Wms.Api.Extensions // Đảm bảo đúng namespace của API project
             services.AddScoped<ISupplierService, SupplierService>();
             services.AddScoped<ICustomerService, CustomerService>();
             services.AddScoped<IProductService, ProductService>();
+            services.AddScoped<IProductUomService, ProductUomService>();
 
             // WAREHOUSE
             services.AddScoped<IWarehouseService, WarehouseService>();
@@ -52,6 +53,8 @@ namespace Wms.Api.Extensions // Đảm bảo đúng namespace của API project
 
             // OUTBOUND
             services.AddScoped<IOutboundOrderService, OutboundOrderService>();
+            services.AddScoped<IGoodsIssueService, GoodsIssueService>();
+            services.AddScoped<IAllocationService, AllocationService>();
 
             //TRANSFER
             services.AddScoped<ITransferService, TransferService>();

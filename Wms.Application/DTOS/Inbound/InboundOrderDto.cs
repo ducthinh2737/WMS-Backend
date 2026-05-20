@@ -29,7 +29,8 @@ public class ScanQRItemDto
 {
     public int ProductId { get; set; }
     public Guid WarehouseId { get; set; }
-    public int Quantity { get; set; }
+    public decimal Quantity { get; set; }
+    public int UnitId { get; set; }
     public decimal Price { get; set; }
 }
 

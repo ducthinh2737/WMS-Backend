@@ -6,8 +6,11 @@ public class GoodsReceiptItemDto
 {
     public Guid Id {  get; set; }
     public int ProductId { get; set; }
-    public int Quantity { get; set; }
-    public int Received_Qty { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal Received_Qty { get; set; }
+    public int UnitId { get; set; }
+    public string UnitName { get; set; } = string.Empty;
+    public decimal BaseQuantity { get; set; }
     public GRIStatus Status { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
@@ -20,6 +23,8 @@ public class GoodsReceiptItem1Dto
     public string? LotCode { get; set; }
     public DateTime? ManufacturingDate { get; set; }    // ← nullable
     public int ProductId { get; set; }
-    public int Received_Qty { get; set; }
+    public decimal Received_Qty { get; set; }
+    public int UnitId { get; set; }
+    public decimal BaseQuantity { get; set; }
     public GRIStatus Status { get; set; }
 }

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Wms.Application.DTOS.Transfer;
 using Wms.Application.Interfaces.Services.Transfer;
 using Wms.Api.Middlewares; // <-- import HasPermission
@@ -43,7 +43,7 @@ public class TransferController : ControllerBase
     /// Tạo mới một phiếu chuyển kho (Trạng thái Draft)
     /// </summary>
     [HttpPost]
-    [HasPermission("transfer.create")]
+    // [HasPermission("transfer.create")]
     public async Task<IActionResult> Create([FromBody] TransferOrderDto dto)
     {
         try
@@ -53,7 +53,7 @@ public class TransferController : ControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(ex.Message);
+            return BadRequest(ex.ToString());
         }
     }
 

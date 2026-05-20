@@ -15,6 +15,21 @@ public class InventoryHistoryConfiguration : IEntityTypeConfiguration<InventoryH
             .HasColumnType("decimal(18,4)")
             .IsRequired();
 
+        builder.Property(x => x.BeforeQty)
+            .HasColumnType("decimal(18,4)")
+            .IsRequired()
+            .HasDefaultValue(0);
+
+        builder.Property(x => x.AfterQty)
+            .HasColumnType("decimal(18,4)")
+            .IsRequired()
+            .HasDefaultValue(0);
+
+        builder.Property(x => x.BaseQuantityChange)
+            .HasColumnType("decimal(18,4)")
+            .IsRequired()
+            .HasDefaultValue(0);
+
         builder.Property(x => x.ActionType)
             .HasConversion<int>() // Enum -> int
             .IsRequired();

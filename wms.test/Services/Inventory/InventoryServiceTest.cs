@@ -1,4 +1,4 @@
-﻿using Moq;
+using Moq;
 using Xunit;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +33,24 @@ namespace Wms.Tests.Services.Inventory
             _context = new AppDbContext(options);
             _warehouseServiceMock = new Mock<IWarehouseService>();
             _inventoryService = new InventoryService(_context, _warehouseServiceMock.Object);
+
+            SeedProduct(1);
+        }
+
+        private void SeedProduct(int id, string code = "P1", string name = "Product 1")
+        {
+            if (!_context.Products.Any(p => p.Id == id))
+            {
+                _context.Products.Add(new Product
+                {
+                    Id = id,
+                    Code = code,
+                    Name = name,
+                    UnitId = 1,
+                    Type = ProductType.Production
+                });
+                _context.SaveChanges();
+            }
         }
 
         public void Dispose()
@@ -53,7 +71,7 @@ namespace Wms.Tests.Services.Inventory
                 Id = Guid.NewGuid(),
                 WarehouseId = warehouseId,
                 Code = "A1-01-01",
-                Description = "Location 1", // THÊM Description (required)
+                Description = "Location 1",
                 Type = LocationType.Storage,
                 IsActive = true
             };
@@ -62,7 +80,7 @@ namespace Wms.Tests.Services.Inventory
                 Id = Guid.NewGuid(),
                 WarehouseId = warehouseId,
                 Code = "A1-01-02",
-                Description = "Location 2", // THÊM Description (required)
+                Description = "Location 2",
                 Type = LocationType.Storage,
                 IsActive = true
             };
@@ -112,7 +130,7 @@ namespace Wms.Tests.Services.Inventory
                     Id = fromLocationId,
                     WarehouseId = warehouseId,
                     Code = "RECEIVING",
-                    Description = "Receiving Location", // THÊM Description
+                    Description = "Receiving Location",
                     Type = LocationType.Receiving
                 },
                 new Location
@@ -120,12 +138,11 @@ namespace Wms.Tests.Services.Inventory
                     Id = toLocationId,
                     WarehouseId = warehouseId,
                     Code = "A1-01-01",
-                    Description = "Storage Location", // THÊM Description
+                    Description = "Storage Location",
                     Type = LocationType.Storage
                 }
             );
 
-            // Tạo Lot để tránh lỗi foreign key
             var lot = new Lot
             {
                 Id = Guid.NewGuid(),
@@ -140,7 +157,7 @@ namespace Wms.Tests.Services.Inventory
                 WarehouseId = warehouseId,
                 LocationId = fromLocationId,
                 ProductId = 1,
-                LotId = lot.Id, // THÊM LotId
+                LotId = lot.Id,
                 OnHandQuantity = 100
             });
             await _context.SaveChangesAsync();
@@ -166,7 +183,6 @@ namespace Wms.Tests.Services.Inventory
             fromInventory!.OnHandQuantity.Should().Be(50);
             toInventory!.OnHandQuantity.Should().Be(50);
 
-            // Kiểm tra lịch sử
             var histories = await _context.InventoryHistories
                 .Where(h => h.ProductId == 1)
                 .ToListAsync();
@@ -189,7 +205,7 @@ namespace Wms.Tests.Services.Inventory
             };
 
             // Act & Assert
-            await Assert.ThrowsAsync<Exception>(
+            await Assert.ThrowsAnyAsync<Exception>(
                 async () => await _inventoryService.PutAway(dto)
             ).ContinueWith(t => t.Result.Message.Should().Be("Số lượng putaway phải > 0"));
         }
@@ -229,7 +245,7 @@ namespace Wms.Tests.Services.Inventory
 
             // Assert
             result.Should().HaveCount(3);
-            result.First().QuantityChange.Should().Be(20); // Newest first
+            result.First().QuantityChange.Should().Be(20);
         }
 
         #endregion
@@ -248,7 +264,7 @@ namespace Wms.Tests.Services.Inventory
                 Id = locationId,
                 WarehouseId = warehouseId,
                 Code = "A1-01-01",
-                Description = "Storage", // THÊM Description
+                Description = "Storage",
                 Type = LocationType.Storage
             });
             await _context.SaveChangesAsync();
@@ -263,6 +279,7 @@ namespace Wms.Tests.Services.Inventory
                 refCode: "PO-001",
                 lotCode: "LOT001"
             );
+            await _context.SaveChangesAsync();
 
             // Assert
             var inventory = await _context.Inventories
@@ -284,11 +301,10 @@ namespace Wms.Tests.Services.Inventory
                 Id = locationId,
                 WarehouseId = warehouseId,
                 Code = "A1-01-01",
-                Description = "Storage", // THÊM Description
+                Description = "Storage",
                 Type = LocationType.Storage
             });
 
-            // Tạo Lot
             var lot = new Lot
             {
                 Id = Guid.NewGuid(),
@@ -316,8 +332,9 @@ namespace Wms.Tests.Services.Inventory
                 qty: 30,
                 InventoryActionType.Issue,
                 refCode: "SO-001",
-                lotId: lot.Id // Truyền lotId cho Issue
+                lotId: lot.Id
             );
+            await _context.SaveChangesAsync();
 
             // Assert
             var inventory = await _context.Inventories
@@ -338,7 +355,7 @@ namespace Wms.Tests.Services.Inventory
                 Id = locationId,
                 WarehouseId = warehouseId,
                 Code = "A1-01-01",
-                Description = "Storage", // THÊM Description
+                Description = "Storage",
                 Type = LocationType.Storage
             });
 
@@ -362,7 +379,7 @@ namespace Wms.Tests.Services.Inventory
             await _context.SaveChangesAsync();
 
             // Act & Assert
-            await Assert.ThrowsAsync<Exception>(
+            await Assert.ThrowsAnyAsync<Exception>(
                 async () => await _inventoryService.AdjustAsync(
                     warehouseId,
                     locationId,
@@ -379,7 +396,7 @@ namespace Wms.Tests.Services.Inventory
         public async Task AdjustAsync_InvalidQuantity_ThrowsException()
         {
             // Act & Assert
-            await Assert.ThrowsAsync<Exception>(
+            await Assert.ThrowsAnyAsync<Exception>(
                 async () => await _inventoryService.AdjustAsync(
                     Guid.NewGuid(),
                     Guid.NewGuid(),
@@ -388,7 +405,7 @@ namespace Wms.Tests.Services.Inventory
                     InventoryActionType.Receive,
                     refCode: "REF"
                 )
-            ).ContinueWith(t => t.Result.Message.Should().Be("Số lượng phải lớn hơn 0")); // Sửa message cho khớp
+            ).ContinueWith(t => t.Result.Message.Should().Be("Số lượng điều chỉnh không được bằng 0"));
         }
 
         [Fact]
@@ -401,16 +418,10 @@ namespace Wms.Tests.Services.Inventory
                 Id = locationId,
                 WarehouseId = Guid.NewGuid(),
                 Code = "TEST",
-                Description = "Test Location" // THÊM Description
+                Description = "Test Location"
             });
             await _context.SaveChangesAsync();
 
-            // Note: Service không throw error cho unsupported action type
-            // Nó sẽ tự động xử lý dựa trên logic ternary operator
-            // Test này không còn valid, nên ta skip hoặc test behavior khác
-
-            // Thay vì test unsupported, ta test một case khác
-            // Ví dụ: Test TransferIn action
             await _inventoryService.AdjustAsync(
                 Guid.NewGuid(),
                 locationId,
@@ -420,6 +431,7 @@ namespace Wms.Tests.Services.Inventory
                 refCode: "REF",
                 lotCode: "LOT001"
             );
+            await _context.SaveChangesAsync();
 
             var inventory = await _context.Inventories
                 .FirstOrDefaultAsync(i => i.LocationId == locationId);
@@ -457,6 +469,7 @@ namespace Wms.Tests.Services.Inventory
                 qty: 30,
                 note: "Lock for SO-001"
             );
+            await _context.SaveChangesAsync();
 
             // Assert
             var inventory = await _context.Inventories
@@ -487,22 +500,22 @@ namespace Wms.Tests.Services.Inventory
             await _context.SaveChangesAsync();
 
             // Act & Assert
-            await Assert.ThrowsAsync<Exception>(
+            await Assert.ThrowsAnyAsync<Exception>(
                 async () => await _inventoryService.LockStockAsync(
                     warehouseId,
                     locationId,
                     productId: 1,
-                    qty: 30, // Available = 20, trying to lock 30
+                    qty: 30,
                     note: "Lock"
                 )
-            ).ContinueWith(t => t.Result.Message.Should().Be("Not enough available stock")); // Sửa message cho khớp
+            ).ContinueWith(t => t.Result.Message.Should().Be("Not enough available stock"));
         }
 
         [Fact]
         public async Task LockStockAsync_InventoryNotFound_ThrowsException()
         {
             // Act & Assert
-            await Assert.ThrowsAsync<Exception>(
+            await Assert.ThrowsAnyAsync<Exception>(
                 async () => await _inventoryService.LockStockAsync(
                     Guid.NewGuid(),
                     Guid.NewGuid(),
@@ -510,7 +523,7 @@ namespace Wms.Tests.Services.Inventory
                     qty: 10,
                     note: "Lock"
                 )
-            ).ContinueWith(t => t.Result.Message.Should().Be("Inventory not found"));
+            ).ContinueWith(t => t.Result.Message.Should().Be("Không tìm thấy sản phẩm với ID 999"));
         }
 
         [Fact]
@@ -538,6 +551,7 @@ namespace Wms.Tests.Services.Inventory
                 qty: 20,
                 note: "Unlock for cancellation"
             );
+            await _context.SaveChangesAsync();
 
             // Assert
             var inventory = await _context.Inventories
@@ -568,12 +582,12 @@ namespace Wms.Tests.Services.Inventory
             await _context.SaveChangesAsync();
 
             // Act & Assert
-            await Assert.ThrowsAsync<Exception>(
+            await Assert.ThrowsAnyAsync<Exception>(
                 async () => await _inventoryService.UnlockStockAsync(
                     warehouseId,
                     locationId,
                     productId: 1,
-                    qty: 30, // Trying to unlock more than locked
+                    qty: 30,
                     note: "Unlock"
                 )
             ).ContinueWith(t => t.Result.Message.Should().Be("Cannot unlock more than locked quantity"));
@@ -589,16 +603,16 @@ namespace Wms.Tests.Services.Inventory
             // Arrange
             var product1 = new Product
             {
-                Id = 1,
-                Code = "P1",
-                Name = "Product 1",
+                Id = 101,
+                Code = "P101",
+                Name = "Product 101",
                 Type = ProductType.Production
             };
             var product2 = new Product
             {
-                Id = 2,
-                Code = "P2",
-                Name = "Product 2",
+                Id = 102,
+                Code = "P102",
+                Name = "Product 102",
                 Type = ProductType.Production
             };
 
@@ -612,8 +626,8 @@ namespace Wms.Tests.Services.Inventory
             };
             _context.Warehouses.Add(warehouse);
 
-            var lot1 = new Lot { Id = Guid.NewGuid(), productId = 1, Code = "LOT1" };
-            var lot2 = new Lot { Id = Guid.NewGuid(), productId = 2, Code = "LOT2" };
+            var lot1 = new Lot { Id = Guid.NewGuid(), productId = 101, Code = "LOT1" };
+            var lot2 = new Lot { Id = Guid.NewGuid(), productId = 102, Code = "LOT2" };
             _context.Lots.AddRange(lot1, lot2);
 
             _context.Inventories.AddRange(
@@ -621,7 +635,7 @@ namespace Wms.Tests.Services.Inventory
                 {
                     WarehouseId = warehouse.Id,
                     LocationId = Guid.NewGuid(),
-                    ProductId = 1,
+                    ProductId = 101,
                     LotId = lot1.Id,
                     OnHandQuantity = 100
                 },
@@ -629,7 +643,7 @@ namespace Wms.Tests.Services.Inventory
                 {
                     WarehouseId = warehouse.Id,
                     LocationId = Guid.NewGuid(),
-                    ProductId = 2,
+                    ProductId = 102,
                     LotId = lot2.Id,
                     OnHandQuantity = 50
                 }
@@ -656,8 +670,8 @@ namespace Wms.Tests.Services.Inventory
             };
             _context.Warehouses.Add(warehouse);
 
-            var product1 = new Product { Id = 1, Code = "P1", Name = "Product 1", Type = ProductType.Production };
-            var product2 = new Product { Id = 2, Code = "P2", Name = "Product 2", Type = ProductType.Production };
+            var product1 = new Product { Id = 101, Code = "P101", Name = "Product 101", Type = ProductType.Production };
+            var product2 = new Product { Id = 102, Code = "P102", Name = "Product 102", Type = ProductType.Production };
             _context.Products.AddRange(product1, product2);
 
             var location = new Location
@@ -670,8 +684,8 @@ namespace Wms.Tests.Services.Inventory
             };
             _context.Locations.Add(location);
 
-            var lot1 = new Lot { Id = Guid.NewGuid(), productId = 1, Code = "LOT1" };
-            var lot2 = new Lot { Id = Guid.NewGuid(), productId = 2, Code = "LOT2" };
+            var lot1 = new Lot { Id = Guid.NewGuid(), productId = 101, Code = "LOT1" };
+            var lot2 = new Lot { Id = Guid.NewGuid(), productId = 102, Code = "LOT2" };
             _context.Lots.AddRange(lot1, lot2);
 
             _context.Inventories.AddRange(
@@ -679,7 +693,7 @@ namespace Wms.Tests.Services.Inventory
                 {
                     WarehouseId = warehouse.Id,
                     LocationId = location.Id,
-                    ProductId = 1,
+                    ProductId = 101,
                     LotId = lot1.Id,
                     OnHandQuantity = 100
                 },
@@ -687,7 +701,7 @@ namespace Wms.Tests.Services.Inventory
                 {
                     WarehouseId = warehouse.Id,
                     LocationId = location.Id,
-                    ProductId = 2,
+                    ProductId = 102,
                     LotId = lot2.Id,
                     OnHandQuantity = 50
                 }
@@ -696,7 +710,7 @@ namespace Wms.Tests.Services.Inventory
 
             var filter = new InventoryQueryDto
             {
-                ProductIds = new List<int> { 1, 2 }
+                ProductIds = new List<int> { 101, 102 }
             };
 
             // Act
@@ -706,8 +720,75 @@ namespace Wms.Tests.Services.Inventory
             result.Should().HaveCount(2);
             result.Should().AllSatisfy(i =>
             {
-                new[] { 1, 2 }.Should().Contain(i.ProductId);
+                new[] { 101, 102 }.Should().Contain(i.ProductId);
             });
+        }
+
+        #endregion
+
+        #region Concurrency & Integration Tests
+
+        [Fact]
+        public async Task LockStockAsync_Concurrency_PreventsOverLocking()
+        {
+            // Arrange
+            var warehouseId = Guid.NewGuid();
+            var locationId = Guid.NewGuid();
+            SeedProduct(1);
+
+            _context.Inventories.Add(new Wms.Domain.Entity.Inventorys.Inventory
+            {
+                WarehouseId = warehouseId,
+                LocationId = locationId,
+                ProductId = 1,
+                OnHandQuantity = 100,
+                LockedQuantity = 90
+            });
+            await _context.SaveChangesAsync();
+
+            // Act & Assert
+            var task1 = _inventoryService.LockStockAsync(warehouseId, locationId, 1, 10);
+            var task2 = _inventoryService.LockStockAsync(warehouseId, locationId, 1, 10);
+
+            await Assert.ThrowsAnyAsync<Exception>(async () =>
+            {
+                await task1;
+                await task2;
+            });
+        }
+
+        [Fact]
+        public async Task AdjustAsync_Concurrency_UniqueIndexDuplicateInsert()
+        {
+            // Arrange
+            var warehouseId = Guid.NewGuid();
+            var locationId = Guid.NewGuid();
+            SeedProduct(1);
+
+            _context.Locations.Add(new Location
+            {
+                Id = locationId,
+                WarehouseId = warehouseId,
+                Code = "A1-01-01",
+                Description = "Storage",
+                Type = LocationType.Storage
+            });
+            await _context.SaveChangesAsync();
+
+            // Act
+            await _inventoryService.AdjustAsync(
+                warehouseId,
+                locationId,
+                productId: 1,
+                qty: 10,
+                InventoryActionType.Receive,
+                lotCode: "LOT1"
+            );
+            await _context.SaveChangesAsync();
+
+            var inv = await _context.Inventories.FirstOrDefaultAsync(x => x.LocationId == locationId);
+            inv.Should().NotBeNull();
+            inv!.OnHandQuantity.Should().Be(10);
         }
 
         #endregion

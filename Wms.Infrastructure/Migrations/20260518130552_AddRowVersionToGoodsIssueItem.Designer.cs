@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Wms.Infrastructure.Persistence.Context;
 
@@ -11,9 +12,11 @@ using Wms.Infrastructure.Persistence.Context;
 namespace Wms.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260518130552_AddRowVersionToGoodsIssueItem")]
+    partial class AddRowVersionToGoodsIssueItem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -437,12 +440,13 @@ namespace Wms.Infrastructure.Migrations
                     b.Property<int>("ProductId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
 
                     b.Property<Guid>("WarehouseId")
                         .HasColumnType("char(36)");
@@ -938,9 +942,6 @@ namespace Wms.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
-                    b.Property<string>("Address")
-                        .HasColumnType("longtext");
-
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -948,9 +949,6 @@ namespace Wms.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreateAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<int?>("CustomerId")
-                        .HasColumnType("int");
 
                     b.Property<DateTime>("IssuedAt")
                         .HasColumnType("datetime(6)");
@@ -967,10 +965,6 @@ namespace Wms.Infrastructure.Migrations
                     b.Property<DateTime?>("UpdateAt")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
-
                     b.Property<Guid>("WarehouseId")
                         .HasColumnType("char(36)");
 
@@ -978,8 +972,6 @@ namespace Wms.Infrastructure.Migrations
 
                     b.HasIndex("Code")
                         .IsUnique();
-
-                    b.HasIndex("CustomerId");
 
                     b.HasIndex("OutboundOrderId");
 
@@ -1014,12 +1006,13 @@ namespace Wms.Infrastructure.Migrations
                     b.Property<decimal>("PickedQty")
                         .HasColumnType("decimal(65,30)");
 
+                    b.Property<DateTime>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp(6)");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -1060,6 +1053,11 @@ namespace Wms.Infrastructure.Migrations
                     b.Property<decimal>("Quantity")
                         .HasColumnType("decimal(65,30)");
 
+                    b.Property<DateTime>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp(6)");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -1068,10 +1066,6 @@ namespace Wms.Infrastructure.Migrations
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -1163,10 +1157,6 @@ namespace Wms.Infrastructure.Migrations
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint");
 
                     b.Property<Guid>("WarehouseId")
                         .HasColumnType("char(36)");
@@ -1667,10 +1657,6 @@ namespace Wms.Infrastructure.Migrations
 
             modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssue", b =>
                 {
-                    b.HasOne("Wms.Domain.Entity.MasterData.Customer", "Customer")
-                        .WithMany()
-                        .HasForeignKey("CustomerId");
-
                     b.HasOne("Wms.Domain.Entity.Outbound.OutboundOrder", "OutboundOrder")
                         .WithMany("GoodsIssues")
                         .HasForeignKey("OutboundOrderId")
@@ -1681,8 +1667,6 @@ namespace Wms.Infrastructure.Migrations
                         .HasForeignKey("WarehouseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Customer");
 
                     b.Navigation("OutboundOrder");
 

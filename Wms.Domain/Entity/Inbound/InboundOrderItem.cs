@@ -7,8 +7,10 @@ public class InboundOrderItem
     public Guid Id { get; set; }
     public Guid InboundOrderId { get; set; }
     public int ProductId { get; set; }
-    public int Quantity { get; set; }
-    public int Received_qty { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal Received_qty { get; set; }
+    public int UnitId { get; set; }
+    public decimal BaseQuantity { get; set; }
     public InboundItemStatus Status { get; set; } = InboundItemStatus.Pending;
     public decimal Price { get; set; }
     public Guid WarehouseId { get; set; }

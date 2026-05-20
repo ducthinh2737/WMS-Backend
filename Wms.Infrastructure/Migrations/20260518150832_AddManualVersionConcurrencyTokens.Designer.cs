@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Wms.Infrastructure.Persistence.Context;
 
@@ -11,9 +12,11 @@ using Wms.Infrastructure.Persistence.Context;
 namespace Wms.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260518150832_AddManualVersionConcurrencyTokens")]
+    partial class AddManualVersionConcurrencyTokens
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -938,9 +941,6 @@ namespace Wms.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
-                    b.Property<string>("Address")
-                        .HasColumnType("longtext");
-
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -948,9 +948,6 @@ namespace Wms.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreateAt")
                         .HasColumnType("datetime(6)");
-
-                    b.Property<int?>("CustomerId")
-                        .HasColumnType("int");
 
                     b.Property<DateTime>("IssuedAt")
                         .HasColumnType("datetime(6)");
@@ -978,8 +975,6 @@ namespace Wms.Infrastructure.Migrations
 
                     b.HasIndex("Code")
                         .IsUnique();
-
-                    b.HasIndex("CustomerId");
 
                     b.HasIndex("OutboundOrderId");
 
@@ -1667,10 +1662,6 @@ namespace Wms.Infrastructure.Migrations
 
             modelBuilder.Entity("Wms.Domain.Entity.Outbound.GoodsIssue", b =>
                 {
-                    b.HasOne("Wms.Domain.Entity.MasterData.Customer", "Customer")
-                        .WithMany()
-                        .HasForeignKey("CustomerId");
-
                     b.HasOne("Wms.Domain.Entity.Outbound.OutboundOrder", "OutboundOrder")
                         .WithMany("GoodsIssues")
                         .HasForeignKey("OutboundOrderId")
@@ -1681,8 +1672,6 @@ namespace Wms.Infrastructure.Migrations
                         .HasForeignKey("WarehouseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("Customer");
 
                     b.Navigation("OutboundOrder");
 

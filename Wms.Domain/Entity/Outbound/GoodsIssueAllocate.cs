@@ -2,7 +2,7 @@ using Wms.Domain.Entity.Warehouses;
 
 namespace Wms.Domain.Entity.Outbound
 {
-    public class GoodsIssueAllocate
+    public class GoodsIssueAllocate : IVersionedEntity
     {
         public Guid Id { get; set; }  
         public Guid GoodsIssueItemId { get; set; }
@@ -12,7 +12,7 @@ namespace Wms.Domain.Entity.Outbound
         public decimal AllocatedQty { get; set; }  
         public decimal PickedQty { get; set; } = 0;  
         public decimal IssuedQty { get; set; } = 0;
-        public byte[] RowVersion { get; set; } = default!;
+        public long Version { get; set; } = 1;
         public GIAStatus Status { get; set; } = GIAStatus.Planned;
 
         // Navigation
@@ -24,7 +24,8 @@ namespace Wms.Domain.Entity.Outbound
         Planned,
         Picking,
         Picked,
-        Cancelled
+        Cancelled,
+        Complete
     }
 }
 

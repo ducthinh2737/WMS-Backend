@@ -24,6 +24,7 @@ namespace Wms.Infrastructure.Persistence.Context
 
         //// MASTER DATA
         public DbSet<Product> Products => Set<Product>();
+        public DbSet<ProductUom> ProductUoms => Set<ProductUom>();
         public DbSet<Category> Categories => Set<Category>();
         public DbSet<Unit> Units => Set<Unit>();
         public DbSet<Brand> Brands => Set<Brand>();
@@ -66,6 +67,33 @@ namespace Wms.Infrastructure.Persistence.Context
         {
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
             base.OnModelCreating(modelBuilder);
+        }
+
+        public override int SaveChanges()
+        {
+            UpdateVersionedEntities();
+            return base.SaveChanges();
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            UpdateVersionedEntities();
+            return base.SaveChangesAsync(cancellationToken);
+        }
+
+        private void UpdateVersionedEntities()
+        {
+            foreach (var entry in ChangeTracker.Entries<Wms.Domain.Entity.IVersionedEntity>())
+            {
+                if (entry.State == EntityState.Added)
+                {
+                    entry.Entity.Version = 1;
+                }
+                else if (entry.State == EntityState.Modified)
+                {
+                    entry.Entity.Version++;
+                }
+            }
         }
     }
 }

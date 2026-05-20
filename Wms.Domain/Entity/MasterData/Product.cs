@@ -1,4 +1,4 @@
-﻿using Wms.Domain.Entity.MasterData;
+using Wms.Domain.Entity.MasterData;
 
 namespace Wms.Domain.Entity.MasterData;
 
@@ -24,7 +24,10 @@ public class Product
     public Brand Brand { get; set; } = null!;
     public Supplier Supplier { get; set; } = null!;
 
+    public ICollection<ProductUom> ProductUoms { get; set; } = new List<ProductUom>();
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
 }
 public enum ProductType
 {

@@ -62,11 +62,17 @@ namespace Wms.Application.DTOs.Inventorys
     {
         public Guid Id { get; set; }
         public Guid WarehouseId { get; set; }
+        public string? WarehouseName { get; set; }
         public Guid? LocationId { get; set; }
+        public string? LocationCode { get; set; }
         public int ProductId { get; set; }
+        public string? ProductName { get; set; }
+        public string? ProductCode { get; set; }
         public Guid LotId { get; set; }
         public string? LotCode { get; set; }
         public decimal QuantityChange { get; set; }
+        public decimal BeforeQty { get; set; }
+        public decimal AfterQty { get; set; }
         public InventoryActionType ActionType { get; set; }
         public string? ReferenceCode { get; set; }
         public string? Note { get; set; }

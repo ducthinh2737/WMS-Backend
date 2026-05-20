@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 
 
 namespace Wms.Application.Services.Warehouses { 
@@ -6,7 +6,7 @@ namespace Wms.Application.Services.Warehouses {
     {
         // Accept patterns like A1-01-03 or B12-10-99
         private static readonly Regex _regex = new Regex(
-            @"^[A-Za-z][A-Za-z0-9]*-[A-Za-z0-9]+-[A-Za-z0-9]+$",
+            @"^[A-Za-z]\d+-\d+-\d+$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase
         );
 

@@ -6,21 +6,14 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Wms.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class AddIssuedQtyAndRowVersionToGoodsIssueAllocate : Migration
+    public partial class AddRowVersionToGoodsIssueItem : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<decimal>(
-                name: "IssuedQty",
-                table: "GoodsIssueAllocates",
-                type: "decimal(18,4)",
-                nullable: false,
-                defaultValue: 0m);
-
             migrationBuilder.AddColumn<DateTime>(
                 name: "RowVersion",
-                table: "GoodsIssueAllocates",
+                table: "GoodsIssueItems",
                 type: "timestamp(6)",
                 rowVersion: true,
                 nullable: true,
@@ -31,12 +24,8 @@ namespace Wms.Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "IssuedQty",
-                table: "GoodsIssueAllocates");
-
-            migrationBuilder.DropColumn(
                 name: "RowVersion",
-                table: "GoodsIssueAllocates");
+                table: "GoodsIssueItems");
         }
     }
 }

@@ -26,7 +26,9 @@ namespace Wms.Application.Interfaces.Services.Inventory
     decimal qty,
     InventoryActionType actionType,
     string refCode,
-    Guid lotId);
+    Guid lotId,
+    int? unitId = null,
+    decimal? originalQty = null);
         Task<List<InventoryDto>> GetInventoryByProductType(ProductType1Dto dto);
         public Task<List<InventoryDto>> GetByLocationAsync(Guid locationId)
             => QueryAsync(new InventoryQueryDto { LocationId = locationId });
@@ -40,6 +42,7 @@ namespace Wms.Application.Interfaces.Services.Inventory
         // INVENTORY HISTORY
         // =========================
         Task<List<InventoryHistoryDto>> GetHistoryAsync(int productId);
+        Task<List<InventoryHistoryDto>> GetRecentGlobalHistoryAsync(int limit = 50);
 
         // =========================
         // ADJUST INVENTORY
@@ -51,7 +54,9 @@ namespace Wms.Application.Interfaces.Services.Inventory
             decimal qtyChange,
             InventoryActionType actionType,
             string? refCode = null,
-            string? note = null
+            string? note = null,
+            int? unitId = null,
+            decimal? originalQty = null
         );
         Task AdjustAsync(
             Guid warehouseId,
@@ -64,7 +69,9 @@ namespace Wms.Application.Interfaces.Services.Inventory
             string? lotCode = null,
             DateTime? expiryDate = null,
             DateTime? manufacturingDate = null,
-            string? note = null);
+            string? note = null,
+            int? unitId = null,
+            decimal? originalQty = null);
 
         // =========================
         // LOCK / UNLOCK STOCK
@@ -74,7 +81,8 @@ namespace Wms.Application.Interfaces.Services.Inventory
             Guid locationId,
             int productId,
             decimal qty,
-            string? note = null
+            string? note = null,
+            Guid? lotId = null
         );
 
         Task UnlockStockAsync(
@@ -82,7 +90,8 @@ namespace Wms.Application.Interfaces.Services.Inventory
             Guid locationId,
             int productId,
             decimal qty,
-            string? note = null
+            string? note = null,
+            Guid? lotId = null
         );
     }
 }

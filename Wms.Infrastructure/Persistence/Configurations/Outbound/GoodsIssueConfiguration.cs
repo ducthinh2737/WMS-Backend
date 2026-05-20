@@ -34,6 +34,9 @@ namespace Wms.Infrastructure.Persistence.Configurations.Outbound
                    .WithOne(x => x.GoodsIssue)
                    .HasForeignKey(x => x.GoodsIssueId)
                    .OnDelete(DeleteBehavior.Cascade);
+
+            builder.Property(x => x.Version)
+                   .IsConcurrencyToken();
         }
     }
 }

@@ -32,8 +32,11 @@ namespace Wms.Application.DTOS.Outbound
 
         public Guid? LocationId { get; set; }
 
-        public int Quantity { get; set; }
-        public int IssuedQty { get; set; }
+        public decimal Quantity { get; set; }
+        public decimal IssuedQty { get; set; }
+        public int UnitId { get; set; }
+        public string UnitName { get; set; } = string.Empty;
+        public decimal BaseQuantity { get; set; }
         public Guid LotId { get; set; }
 
         public GIStatus Status { get; set; }
@@ -47,7 +50,7 @@ namespace Wms.Application.DTOS.Outbound
     public class IssueGoodsDto
     {
         public Guid GoodsIssueItemId { get; set; }
-        public int IssuedQty { get; set; }
+        public decimal IssuedQty { get; set; }
     }
 
     public class GoodsIssueAllocateDto
@@ -77,6 +80,9 @@ namespace Wms.Application.DTOS.Outbound
         [Required]
         public Guid WarehouseId { get; set; }
 
+        public int? CustomerId { get; set; }
+        public string? Address { get; set; }
+
         [Required]
         public List<ProductionGoodsIssueItemCreateDto> Items { get; set; } = new();
     }
@@ -87,8 +93,11 @@ namespace Wms.Application.DTOS.Outbound
         public int ProductId { get; set; }
 
         [Required]
-        [Range(1, int.MaxValue)]
-        public int Quantity { get; set; }
+        [Range(0.0001, double.MaxValue)]
+        public decimal Quantity { get; set; }
+
+        [Required]
+        public int UnitId { get; set; }
     }
 
 
@@ -99,8 +108,11 @@ namespace Wms.Application.DTOS.Outbound
         [Required]
         public Guid LocationId { get; set; }
         [Required]
-        [Range(1, int.MaxValue)]
-        public int Quantity { get; set; }
+        [Range(0.0001, double.MaxValue)]
+        public decimal Quantity { get; set; }
+
+        [Required]
+        public int UnitId { get; set; }
     }
 
     // DTO query/filter GI

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Wms.Domain.Entity.Inventorys;
 using Wms.Domain.Entity.MasterData;
 using Wms.Domain.Entity.Warehouses;
@@ -500,6 +500,131 @@ public static class TechnicalPlasticWarehouseSeeder
             await db.SaveChangesAsync();
             Console.WriteLine($"→ Inventories seeded ({inventories.Count} bản ghi)");
         }
+        // ══════════════════════════════════════════════
+        // 11. BACKFILL BASE PRODUCT UOMS
+        // ══════════════════════════════════════════════
+        var productsWithoutBaseUom = await db.Products
+            .Where(p => !db.ProductUoms.Any(u => u.ProductId == p.Id && u.UnitId == p.UnitId && u.IsBaseUnit))
+            .ToListAsync();
+
+        if (productsWithoutBaseUom.Any())
+        {
+            var backfilledUoms = productsWithoutBaseUom.Select(p => new ProductUom
+            {
+                ProductId = p.Id,
+                UnitId = p.UnitId,
+                Factor = 1,
+                IsBaseUnit = true,
+                CreatedAt = DateTime.UtcNow
+            }).ToList();
+            db.ProductUoms.AddRange(backfilledUoms);
+            await db.SaveChangesAsync();
+            Console.WriteLine($"→ Backfilled base ProductUom for {productsWithoutBaseUom.Count} products");
+        }
+
+        // ══════════════════════════════════════════════
+        // 12. BACKFILL TRANSACTION ITEMS' UNITID AND BASEQUANTITY
+        // ══════════════════════════════════════════════
+        // InboundOrderItems
+        var inboundItemsToFix = await db.InboundOrderItems
+            .Where(i => i.UnitId <= 0 || i.BaseQuantity <= 0)
+            .ToListAsync();
+        foreach (var item in inboundItemsToFix)
+        {
+            var prod = await db.Products.FindAsync(item.ProductId);
+            if (prod != null)
+            {
+                if (item.UnitId <= 0) item.UnitId = prod.UnitId;
+                if (item.BaseQuantity <= 0) item.BaseQuantity = item.Quantity;
+            }
+        }
+
+        // OutboundOrderItems
+        var outboundItemsToFix = await db.OutboundOrderItems
+            .Where(i => i.UnitId <= 0 || i.BaseQuantity <= 0)
+            .ToListAsync();
+        foreach (var item in outboundItemsToFix)
+        {
+            var prod = await db.Products.FindAsync(item.ProductId);
+            if (prod != null)
+            {
+                if (item.UnitId <= 0) item.UnitId = prod.UnitId;
+                if (item.BaseQuantity <= 0) item.BaseQuantity = item.Quantity;
+            }
+        }
+
+        // GoodsReceiptItems
+        var grItemsToFix = await db.GoodsReceiptItems
+            .Where(i => i.UnitId <= 0 || i.BaseQuantity <= 0)
+            .ToListAsync();
+        foreach (var item in grItemsToFix)
+        {
+            var prod = await db.Products.FindAsync(item.ProductId);
+            if (prod != null)
+            {
+                if (item.UnitId <= 0) item.UnitId = prod.UnitId;
+                if (item.BaseQuantity <= 0) item.BaseQuantity = item.Quantity;
+            }
+        }
+
+        // ProductionReceiptItems
+        var prItemsToFix = await db.ProductionReceiptItems
+            .Where(i => i.UnitId <= 0 || i.BaseQuantity <= 0)
+            .ToListAsync();
+        foreach (var item in prItemsToFix)
+        {
+            var prod = await db.Products.FindAsync(item.ProductId);
+            if (prod != null)
+            {
+                if (item.UnitId <= 0) item.UnitId = prod.UnitId;
+                if (item.BaseQuantity <= 0) item.BaseQuantity = item.Quantity;
+            }
+        }
+
+        // GoodsIssueItems
+        var giItemsToFix = await db.GoodsIssueItems
+            .Where(i => i.UnitId <= 0 || i.BaseQuantity <= 0)
+            .ToListAsync();
+        foreach (var item in giItemsToFix)
+        {
+            var prod = await db.Products.FindAsync(item.ProductId);
+            if (prod != null)
+            {
+                if (item.UnitId <= 0) item.UnitId = prod.UnitId;
+                if (item.BaseQuantity <= 0) item.BaseQuantity = item.Quantity;
+            }
+        }
+
+        // InventoryTransactions
+        var invTxToFix = await db.InventoryTransactions
+            .Where(i => i.UnitId <= 0 || i.BaseQuantity <= 0)
+            .ToListAsync();
+        foreach (var item in invTxToFix)
+        {
+            var prod = await db.Products.FindAsync(item.ProductId);
+            if (prod != null)
+            {
+                if (item.UnitId <= 0) item.UnitId = prod.UnitId;
+                if (item.BaseQuantity <= 0) item.BaseQuantity = item.Quantity;
+            }
+        }
+
+        // InventoryHistories
+        var invHistToFix = await db.InventoryHistories
+            .Where(i => i.UnitId <= 0 || i.BaseQuantityChange <= 0)
+            .ToListAsync();
+        foreach (var item in invHistToFix)
+        {
+            var prod = await db.Products.FindAsync(item.ProductId);
+            if (prod != null)
+            {
+                if (item.UnitId <= 0) item.UnitId = prod.UnitId;
+                if (item.BaseQuantityChange <= 0) item.BaseQuantityChange = item.QuantityChange;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        Console.WriteLine($"→ Programmatically healed legacy UnitId & BaseQuantity records");
 
         Console.WriteLine();
         Console.WriteLine("══════════════════════════════════════════════════════════════");

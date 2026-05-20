@@ -51,8 +51,11 @@ public class OutboundOrderItemDto
 
     public int ProductId { get; set; }
 
-    public int OrderQty { get; set; }
-    public int IssuedQty { get; set; }
+    public decimal OrderQty { get; set; }
+    public decimal IssuedQty { get; set; }
+    public int UnitId { get; set; }
+    public string UnitName { get; set; } = string.Empty;
+    public decimal BaseQuantity { get; set; }
     public Guid WarehouseId { get; set; }
 
     public decimal Price { get; set; }
@@ -77,8 +80,11 @@ public class OutboundOrderItemCreateDto
     public int ProductId { get; set; }
 
     [Required]
-    [Range(1, int.MaxValue)]
-    public int Quantity { get; set; }
+    [Range(0.0001, double.MaxValue)]
+    public decimal Quantity { get; set; }
+
+    [Required]
+    public int UnitId { get; set; }
 
     [Required]
     [Range(0, double.MaxValue)]
@@ -101,8 +107,9 @@ public class OutboundOrderItemUpdateDto
     [Required]
     public Guid Id { get; set; }
 
-    [Range(1, int.MaxValue)]
-    public int OrderQty { get; set; }
+    [Range(0.0001, double.MaxValue)]
+    public decimal OrderQty { get; set; }
+    public int UnitId { get; set; }
 
     [Range(0, double.MaxValue)]
     public decimal UnitPrice { get; set; }
@@ -141,8 +148,10 @@ public class GoodsIssueItem1Dto
     public Guid OutboundOrderItemId { get; set; }                
     public int ProductId { get; set; }
     public string? ProductName { get; set; }        
-    public int Quantity { get; set; }
-    public int Issued_Qty { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal Issued_Qty { get; set; }
+    public int UnitId { get; set; }
+    public decimal BaseQuantity { get; set; }
 }
 
 public class GoodsIssueQuery1Dto
@@ -165,6 +174,10 @@ public class GoodsIssueDetailDto
     public GIType Type { get; set; }
     public string WarehouseName { get; set; } = null!;
     public int Status { get; set; } // GIStatus enum as int
+
+    public string? CustomerName { get; set; }
+    public string? Address { get; set; }
+
     public List<GoodsIssueItemDtoForFrontend> Items { get; set; } = new();
 }
 
@@ -177,6 +190,9 @@ public class GoodsIssueItemDtoForFrontend
     public decimal Quantity { get; set; }
     public decimal PickedQty { get; set; }
     public decimal IssuedQty { get; set; }
+    public int UnitId { get; set; }
+    public string UnitName { get; set; } = string.Empty;
+    public decimal BaseQuantity { get; set; }
     public int Status { get; set; }
     public List<GoodsIssueAllocate1Dto> Allocations { get; set; } = new();
 }

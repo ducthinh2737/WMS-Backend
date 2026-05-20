@@ -21,6 +21,8 @@ namespace Wms.Domain.Entity.Inventorys
 
         public InventoryActionType ActionType { get; set; }
         public decimal Quantity { get; set; }
+        public int UnitId { get; set; }
+        public decimal BaseQuantity { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public string? CreatedBy { get; set; }

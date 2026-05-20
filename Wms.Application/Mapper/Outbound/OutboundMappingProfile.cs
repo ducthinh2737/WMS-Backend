@@ -26,6 +26,8 @@ namespace Wms.Application.Mapper.Outbound
 
             // GoodsIssue ↔ GoodsIssueDto
             CreateMap<GoodsIssue, GoodsIssueDto>()
+                .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreateAt))
+                .ForMember(dest => dest.UpdatedAt, opt => opt.MapFrom(src => src.UpdateAt))
                 .ForMember(dest => dest.IssuedAt, opt => opt.MapFrom(src => src.IssuedAt))
                 .ForMember(dest => dest.Items, opt => opt.MapFrom(src => src.Items));
 

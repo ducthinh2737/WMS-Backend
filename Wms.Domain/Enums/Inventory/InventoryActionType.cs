@@ -1,4 +1,4 @@
-﻿namespace Wms.Domain.Enums.Inventory
+namespace Wms.Domain.Enums.Inventory
 {
     public enum InventoryActionType
     {
@@ -10,7 +10,10 @@
         AdjustDecrease = 6,   // Điều chỉnh -
         StockCount = 7,       // Kiểm kê chênh lệch
         Lock = 8,             // Khóa tồn
-        Unlock = 9        ,    // Mở khóa tồn
-            StockTakeAdjustment = 10 // Thêm dòng này
+        Unlock = 9,
+        StockTakeAdjustment = 10,
+        Pick = 11,
+        Stage = 12,
+        ReleaseReservation = 13
     }
 }
