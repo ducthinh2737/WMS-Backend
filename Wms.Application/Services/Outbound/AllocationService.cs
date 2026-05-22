@@ -40,7 +40,9 @@ namespace Wms.Application.Services.Outbound
 
             // 2. FEFO Sorting & Batches Expiry Filter
             var validLocations = locations
-                .Where(loc => !loc.ExpiryDate.HasValue || loc.ExpiryDate.Value > DateTime.UtcNow)
+                .Where(loc => (!loc.ExpiryDate.HasValue || loc.ExpiryDate.Value > DateTime.UtcNow)
+                           && (loc.Type == Wms.Domain.Enums.location.LocationType.Storage 
+                            || loc.Type == Wms.Domain.Enums.location.LocationType.Picking))
                 .ToList();
 
             if (!validLocations.Any())

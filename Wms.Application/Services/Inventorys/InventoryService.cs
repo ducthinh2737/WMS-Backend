@@ -710,12 +710,12 @@ namespace Wms.Application.Services.Inventorys
 
             if (inv == null)
             {
-                throw new BusinessException("INVENTORY_NOT_FOUND", "Inventory not found");
+                throw new BusinessException("INSUFFICIENT_STOCK", $"không đủ tồn kho (Có: {0:0.0000}, Yêu cầu: {qty})");
             }
 
             if (inv.AvailableQuantity < qty)
             {
-                throw new BusinessException("INSUFFICIENT_STOCK", "Not enough available stock");
+                throw new BusinessException("INSUFFICIENT_STOCK", $"không đủ tồn kho (Có: {inv.AvailableQuantity:0.0000}, Yêu cầu: {qty})");
             }
 
             decimal beforeQty = inv.LockedQuantity;

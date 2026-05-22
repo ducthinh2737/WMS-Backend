@@ -508,7 +508,30 @@ namespace Wms.Tests.Services.Inventory
                     qty: 30,
                     note: "Lock"
                 )
-            ).ContinueWith(t => t.Result.Message.Should().Be("Not enough available stock"));
+            ).ContinueWith(t => t.Result.Message.Should().Contain("không đủ tồn kho").And.Contain("Có: 20,0000").And.Contain("Yêu cầu: 30"));
+        }
+
+        [Fact]
+        public async Task LockStockAsync_InventoryNotFound_ThrowsInsufficientStock()
+        {
+            // Arrange
+            var warehouseId = Guid.NewGuid();
+            var locationId = Guid.NewGuid();
+            
+            // Product needs to exist
+            _context.Products.Add(new Wms.Domain.Entity.MasterData.Product { Id = 2, Code = "P2", Name = "Product 2", UnitId = 1 });
+            await _context.SaveChangesAsync();
+
+            // Act & Assert
+            await Assert.ThrowsAnyAsync<Exception>(
+                async () => await _inventoryService.LockStockAsync(
+                    warehouseId,
+                    locationId,
+                    productId: 2,
+                    qty: 10,
+                    note: "Lock"
+                )
+            ).ContinueWith(t => t.Result.Message.Should().Contain("không đủ tồn kho").And.Contain("Có: 0,0000").And.Contain("Yêu cầu: 10"));
         }
 
         [Fact]

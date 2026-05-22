@@ -417,6 +417,11 @@ public class InboundService : IInboundService
                         if (production == null)
                             throw new Exception("Chi tiết sản phẩm nhập không tồn tại");
 
+                        if (item.ManufacturingDate.HasValue && item.ExpiryDate.HasValue && item.ManufacturingDate.Value.Date > item.ExpiryDate.Value.Date)
+                        {
+                            throw new BusinessException("INVALID_DATE", "Ngày sản xuất không được lớn hơn hạn sử dụng");
+                        }
+
                         if (production.Receipt_Qty + item.Receipt_Qty > production.Quantity)
                             throw new Exception("Số lượng nhận vượt quá số lượng yêu cầu");
 
@@ -502,6 +507,11 @@ public class InboundService : IInboundService
 
                 if (item == null)
                     throw new Exception("Dòng hàng nhập kho không tồn tại (ID null hoặc sai)");
+
+                if (dto.ManufacturingDate.HasValue && dto.ExpiryDate.HasValue && dto.ManufacturingDate.Value.Date > dto.ExpiryDate.Value.Date)
+                {
+                    throw new BusinessException("INVALID_DATE", "Ngày sản xuất không được lớn hơn hạn sử dụng");
+                }
 
                 // 1️⃣ Update GR Item
                 item.Received_Qty += dto.Received_Qty;
