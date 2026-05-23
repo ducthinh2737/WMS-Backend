@@ -6,9 +6,11 @@ using Wms.Application.DTOS.Outbound;
 using Wms.Application.Exceptions;
 using Wms.Application.Interfaces.Services.MasterData;
 using Wms.Application.Interfaces.Services.Outbound;
+using Wms.Application.Interfaces.Services.Inventory;
 using Wms.Domain.Entity.Outbound;
 using Wms.Domain.Entity.MasterData;
 using Wms.Domain.Enums.Inventory;
+using Wms.Domain.Enums.location;
 using Wms.Infrastructure.Persistence.Context;
 using System;
 using System.Collections.Generic;
@@ -22,6 +24,7 @@ namespace Wms.Application.Services.Outbound
         private readonly AppDbContext _dbContext;
         private readonly IAllocationService _allocationService;
         private readonly IProductUomService _productUomService;
+        private readonly IInventoryService _inventoryService;
         private readonly IMapper _mapper;
         private readonly ILogger<GoodsIssueService> _logger;
 
@@ -29,12 +32,14 @@ namespace Wms.Application.Services.Outbound
             AppDbContext dbContext,
             IAllocationService allocationService,
             IProductUomService productUomService,
+            IInventoryService inventoryService,
             IMapper mapper,
             ILogger<GoodsIssueService>? logger = null)
         {
             _dbContext = dbContext;
             _allocationService = allocationService;
             _productUomService = productUomService;
+            _inventoryService = inventoryService;
             _mapper = mapper;
             _logger = logger ?? NullLogger<GoodsIssueService>.Instance;
         }
@@ -238,13 +243,34 @@ namespace Wms.Application.Services.Outbound
             if (gi == null) return null;
 
             // FIX BUG 3 (Hỗ trợ hiển thị): Tự động allocate khi xem chi tiết để frontend có allocation hiển thị
+            // AND: Tự động tái phân bổ (re-allocate) các phân bổ "Chưa xác định" (backorder) khi có hàng mới về.
             bool needSave = false;
             foreach (var item in gi.Items)
             {
-                if ((gi.Status == GIStatus.Approve || gi.Status == GIStatus.Picking) && !item.Allocations.Any())
+                if (gi.Status == GIStatus.Approve || gi.Status == GIStatus.Picking)
                 {
-                    needSave = true;
-                    break;
+                    if (!item.Allocations.Any())
+                    {
+                        needSave = true;
+                        break;
+                    }
+                    else
+                    {
+                        var backorders = item.Allocations.Where(a => a.LocationId == null && a.PickedQty == 0).ToList();
+                        if (backorders.Any())
+                        {
+                            var available = await _inventoryService.GetAvailableLocations(item.ProductId, gi.WarehouseId);
+                            var hasStock = available.Any(loc => 
+                                (!loc.ExpiryDate.HasValue || loc.ExpiryDate.Value.Date >= DateTime.UtcNow.Date) &&
+                                (loc.Type == LocationType.Storage || loc.Type == LocationType.Picking));
+
+                            if (hasStock)
+                            {
+                                needSave = true;
+                                break;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -258,9 +284,34 @@ namespace Wms.Application.Services.Outbound
                     {
                         foreach (var item in gi.Items)
                         {
-                            if ((gi.Status == GIStatus.Approve || gi.Status == GIStatus.Picking) && !item.Allocations.Any())
+                            if (gi.Status == GIStatus.Approve || gi.Status == GIStatus.Picking)
                             {
-                                await _allocationService.AllocateInventoryAsync(item, gi.WarehouseId);
+                                if (!item.Allocations.Any())
+                                {
+                                    await _allocationService.AllocateInventoryAsync(item, gi.WarehouseId);
+                                }
+                                else
+                                {
+                                    var backorders = item.Allocations.Where(a => a.LocationId == null && a.PickedQty == 0).ToList();
+                                    if (backorders.Any())
+                                    {
+                                        var available = await _inventoryService.GetAvailableLocations(item.ProductId, gi.WarehouseId);
+                                        var hasStock = available.Any(loc => 
+                                            (!loc.ExpiryDate.HasValue || loc.ExpiryDate.Value.Date >= DateTime.UtcNow.Date) &&
+                                            (loc.Type == LocationType.Storage || loc.Type == LocationType.Picking));
+
+                                        if (hasStock)
+                                        {
+                                            decimal qtyToReallocate = backorders.Sum(b => b.AllocatedQty);
+                                            
+                                            // Delete old backorders
+                                            _dbContext.GoodsIssueAllocates.RemoveRange(backorders);
+                                            
+                                            // Re-run allocation for this remaining quantity
+                                            await _allocationService.AllocateInventoryAsync(item, gi.WarehouseId, qtyToReallocate);
+                                        }
+                                    }
+                                }
                             }
                         }
                         await _dbContext.SaveChangesAsync();

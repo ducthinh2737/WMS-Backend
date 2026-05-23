@@ -28,9 +28,9 @@ namespace Wms.Application.Services.Outbound
             _logger = logger ?? NullLogger<AllocationService>.Instance;
         }
 
-        public async Task AllocateInventoryAsync(GoodsIssueItem item, Guid warehouseId)
+        public async Task AllocateInventoryAsync(GoodsIssueItem item, Guid warehouseId, decimal? quantityOverride = null)
         {
-            decimal remainingQty = item.BaseQuantity;
+            decimal remainingQty = quantityOverride ?? item.BaseQuantity;
 
             // 1. Retrieve Available Locations
             var locations = await _inventoryService.GetAvailableLocations(
@@ -40,7 +40,7 @@ namespace Wms.Application.Services.Outbound
 
             // 2. FEFO Sorting & Batches Expiry Filter
             var validLocations = locations
-                .Where(loc => (!loc.ExpiryDate.HasValue || loc.ExpiryDate.Value > DateTime.UtcNow)
+                .Where(loc => (!loc.ExpiryDate.HasValue || loc.ExpiryDate.Value.Date >= DateTime.UtcNow.Date)
                            && (loc.Type == Wms.Domain.Enums.location.LocationType.Storage 
                             || loc.Type == Wms.Domain.Enums.location.LocationType.Picking))
                 .ToList();
@@ -50,11 +50,12 @@ namespace Wms.Application.Services.Outbound
                 var product = await _dbContext.Products
                     .FirstOrDefaultAsync(p => p.Id == item.ProductId);
 
-                throw new BusinessException(
-                    "NO_VALID_BATCHES",
-                    $"Không thể phân bổ sản phẩm '{product?.Name ?? item.ProductId.ToString()}'. " +
-                    $"Tất cả {locations.Count} lô hàng trong kho đều đã hết hạn sử dụng. " +
-                    $"Vui lòng kiểm tra lại tồn kho."
+                _logger.LogWarning(
+                    "Không thể phân bổ tự động cho sản phẩm '{ProductName}'. " +
+                    "Tất cả {LocationsCount} lô hàng trong kho đều đã hết hạn sử dụng hoặc không có tồn kho. " +
+                    "Phân bổ này sẽ được chuyển thành Backorder.",
+                    product?.Name ?? item.ProductId.ToString(),
+                    locations.Count
                 );
             }
 
@@ -66,7 +67,7 @@ namespace Wms.Application.Services.Outbound
                     .FirstOrDefaultAsync(p => p.Id == item.ProductId);
 
                 var expiredQty = locations
-                    .Where(loc => loc.ExpiryDate.HasValue && loc.ExpiryDate.Value <= DateTime.UtcNow)
+                    .Where(loc => loc.ExpiryDate.HasValue && loc.ExpiryDate.Value.Date < DateTime.UtcNow.Date)
                     .Sum(loc => loc.AvailableQty);
 
                 _logger.LogWarning(
@@ -99,7 +100,7 @@ namespace Wms.Application.Services.Outbound
                 // Expiry Batch warnings (< 30 days away)
                 if (loc.ExpiryDate.HasValue)
                 {
-                    var daysUntilExpiry = (loc.ExpiryDate.Value - DateTime.UtcNow).TotalDays;
+                    var daysUntilExpiry = (loc.ExpiryDate.Value.Date - DateTime.UtcNow.Date).TotalDays;
                     if (daysUntilExpiry < 30)
                     {
                         _logger.LogWarning(

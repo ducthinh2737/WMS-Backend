@@ -700,12 +700,16 @@ namespace Wms.Application.Services.Inventorys
             }
 
             var inv = _db.Inventories.Local
-                .FirstOrDefault(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId && (lotId == null || lotId == Guid.Empty || x.LotId == lotId));
+                .Where(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId && (lotId == null || lotId == Guid.Empty || x.LotId == lotId))
+                .OrderByDescending(x => x.OnHandQuantity - x.LockedQuantity)
+                .FirstOrDefault();
 
             if (inv == null)
             {
                 inv = await _db.Inventories
-                    .FirstOrDefaultAsync(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId && (lotId == null || lotId == Guid.Empty || x.LotId == lotId));
+                    .Where(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId && (lotId == null || lotId == Guid.Empty || x.LotId == lotId))
+                    .OrderByDescending(x => x.OnHandQuantity - x.LockedQuantity)
+                    .FirstOrDefaultAsync();
             }
 
             if (inv == null)
@@ -782,12 +786,16 @@ namespace Wms.Application.Services.Inventorys
             }
 
             var inv = _db.Inventories.Local
-                .FirstOrDefault(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId && (lotId == null || lotId == Guid.Empty || x.LotId == lotId));
+                .Where(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId && (lotId == null || lotId == Guid.Empty || x.LotId == lotId))
+                .OrderByDescending(x => x.LockedQuantity)
+                .FirstOrDefault();
 
             if (inv == null)
             {
                 inv = await _db.Inventories
-                    .FirstOrDefaultAsync(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId && (lotId == null || lotId == Guid.Empty || x.LotId == lotId));
+                    .Where(x => x.WarehouseId == warehouseId && x.LocationId == locationId && x.ProductId == productId && (lotId == null || lotId == Guid.Empty || x.LotId == lotId))
+                    .OrderByDescending(x => x.LockedQuantity)
+                    .FirstOrDefaultAsync();
             }
 
             if (inv == null)
