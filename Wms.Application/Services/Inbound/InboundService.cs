@@ -427,6 +427,15 @@ public class InboundService : IInboundService
 
                         production.Receipt_Qty += item.Receipt_Qty;
 
+                        if (item.ExpiryDate.HasValue)
+                        {
+                            production.ExpiryDate = item.ExpiryDate;
+                        }
+                        if (item.ManufacturingDate.HasValue)
+                        {
+                            production.ManufacturingDate = item.ManufacturingDate;
+                        }
+
                         production.Status = production.Receipt_Qty == production.Quantity
                             ? GRIStatus.Complete
                             : GRIStatus.Partial;
@@ -621,6 +630,33 @@ public class InboundService : IInboundService
         int page = 1,
         int pageSize = 20)
     {
+        // Tự động đồng bộ/sửa dữ liệu nếu ExpiryDate hoặc ManufacturingDate bị null
+        var incompleteItems = await _db.Set<ProductionReceiptItem>()
+            .Include(p => p.GoodsReceipt)
+            .Where(p => p.ExpiryDate == null || p.ManufacturingDate == null)
+            .ToListAsync();
+
+        if (incompleteItems.Any())
+        {
+            foreach (var item in incompleteItems)
+            {
+                var history = await _db.InventoryHistories
+                    .Where(h => h.ReferenceCode == item.GoodsReceipt.Code && h.ProductId == item.ProductId)
+                    .FirstOrDefaultAsync();
+
+                if (history != null)
+                {
+                    var lot = await _db.Lots.FindAsync(history.LotId);
+                    if (lot != null)
+                    {
+                        item.ExpiryDate = lot.ExpiryDate;
+                        item.ManufacturingDate = lot.ManufacturingDate;
+                    }
+                }
+            }
+            await _db.SaveChangesAsync();
+        }
+
         var query = _db.Set<GoodsReceipt>()
             .Include(x => x.Items)
             .Include(x => x.Productions)
@@ -740,6 +776,8 @@ public class InboundService : IInboundService
             Receipt_Qty = p.Receipt_Qty,
             UnitId = p.UnitId,
             BaseQuantity = p.BaseQuantity,
+            ExpiryDate = p.ExpiryDate,
+            ManufacturingDate = p.ManufacturingDate,
             Status = p.Status,
             CreatedAt = p.CreatedAt,
             UpdatedAt = p.UpdatedAt

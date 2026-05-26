@@ -362,6 +362,7 @@ namespace Wms.Application.Services.Outbound
                             .ToListAsync();
 
                         // 1. Calculate incoming changes and total picked target
+                        var pickedInBaseMap = new Dictionary<Guid, decimal>();
                         decimal incomingQtySum = 0;
                         foreach (var itemDto in dto.Allocations)
                         {
@@ -371,12 +372,24 @@ namespace Wms.Application.Services.Outbound
                             decimal actualPicked = itemDto.PickedQty;
                             if (actualPicked <= 0) continue;
 
-                            decimal actualPickedInBase = await _productUomService.ConvertToBaseQuantityAsync(dto.ProductId, gii.UnitId, actualPicked);
+                            decimal remainingAllocatedInBase = gia.AllocatedQty - gia.PickedQty;
+                            decimal remainingAllocatedInUom = await _productUomService.ConvertFromBaseQuantityAsync(dto.ProductId, gii.UnitId, remainingAllocatedInBase);
+
+                            decimal actualPickedInBase;
+                            if (Math.Abs(actualPicked - remainingAllocatedInUom) <= 0.00011m)
+                            {
+                                actualPickedInBase = remainingAllocatedInBase;
+                            }
+                            else
+                            {
+                                actualPickedInBase = await _productUomService.ConvertToBaseQuantityAsync(dto.ProductId, gii.UnitId, actualPicked);
+                            }
 
                             // Check allocation-level constraint
                             if (gia.PickedQty + actualPickedInBase > gia.AllocatedQty)
                                 throw new BusinessException("PICK_EXCEEDS_ALLOCATION", $"Số lượng pick vượt quá phân bổ (Allocation={gia.AllocatedQty}, Đã Pick={gia.PickedQty}, Yêu cầu thêm={actualPickedInBase}).");
 
+                            pickedInBaseMap[gia.Id] = actualPickedInBase;
                             incomingQtySum += actualPickedInBase;
                         }
 
@@ -391,8 +404,8 @@ namespace Wms.Application.Services.Outbound
                             var gia = allAllocates.FirstOrDefault(a => a.Id == itemDto.Id);
                             if (gia == null) continue;
 
-                            decimal actualPicked = itemDto.PickedQty;
-                            if (actualPicked <= 0) continue;
+                            if (!pickedInBaseMap.TryGetValue(gia.Id, out decimal actualPickedInBase) || actualPickedInBase <= 0)
+                                continue;
 
                             if (!gia.LocationId.HasValue || gia.LocationId == Guid.Empty)
                             {
@@ -402,7 +415,7 @@ namespace Wms.Application.Services.Outbound
                                 );
                             }
 
-                            decimal actualPickedInBase = await _productUomService.ConvertToBaseQuantityAsync(dto.ProductId, gii.UnitId, actualPicked);
+                            decimal actualPicked = await _productUomService.ConvertFromBaseQuantityAsync(dto.ProductId, gii.UnitId, actualPickedInBase);
 
                             gia.PickedQty += actualPickedInBase;
                             gia.Status = (gia.PickedQty >= gia.AllocatedQty) ? GIAStatus.Picked : GIAStatus.Picking;
@@ -556,7 +569,17 @@ namespace Wms.Application.Services.Outbound
 
                         decimal totalCurrentlyAtGate = pickedAllocates.Sum(x => x.PickedQty - x.IssuedQty);
 
-                        decimal issuedQtyInBase = await _productUomService.ConvertToBaseQuantityAsync(gii.ProductId, gii.UnitId, issuedQtyDec);
+                        decimal totalCurrentlyAtGateInUom = await _productUomService.ConvertFromBaseQuantityAsync(gii.ProductId, gii.UnitId, totalCurrentlyAtGate);
+
+                        decimal issuedQtyInBase;
+                        if (Math.Abs(issuedQtyDec - totalCurrentlyAtGateInUom) <= 0.00011m)
+                        {
+                            issuedQtyInBase = totalCurrentlyAtGate;
+                        }
+                        else
+                        {
+                            issuedQtyInBase = await _productUomService.ConvertToBaseQuantityAsync(gii.ProductId, gii.UnitId, issuedQtyDec);
+                        }
 
                         if (issuedQtyInBase > totalCurrentlyAtGate)
                             throw new BusinessException("ISSUE_EXCEEDS_PICKED", "Số lượng xuất vượt quá số lượng hàng đang có sẵn tại cổng xuất.");
